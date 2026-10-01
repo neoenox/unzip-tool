@@ -47,7 +47,12 @@ try {
     if ($registration.DisplayVersion -ne $Version) { throw 'Incorrect registered version.' }
     if ($registration.DisplayName -ne 'かんたん解凍') { throw "Incorrect Japanese application name: $($registration.DisplayName)" }
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut($shortcut)
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $link = $shell.CreateShortcut($shortcut)
+        if ((Test-Path -LiteralPath $shortcut) -and $link.TargetPath -eq $installedExe) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
     if (-not (Test-Path -LiteralPath $shortcut) -or $link.TargetPath -ne $installedExe) {
         throw "Start menu shortcut mismatch: expected=$shortcut target=$($link.TargetPath) files=$((Get-ChildItem -LiteralPath $groupDirectory -ErrorAction SilentlyContinue).Name -join ',')"
     }
