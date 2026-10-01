@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [string]$ExecutablePath,
     [string]$Version = '1.0.0'
@@ -21,11 +21,14 @@ $uninstaller = Join-Path $target 'unins000.exe'
 $userFile = Join-Path $target 'keep-user-file.txt'
 $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$target`"", "/GROUP=`"$testName`"")
 function Run-Setup([string]$FilePath, [string[]]$SetupArguments) {
+    Write-Output "Running $(Split-Path -Leaf $FilePath)"
     $process = Start-Process -FilePath $FilePath -ArgumentList $SetupArguments -WindowStyle Hidden -PassThru
+    $processHandle = $process.Handle
     if (-not $process.WaitForExit(60000)) {
         Stop-Process -Id $process.Id -Force
         throw 'Installer timed out.'
     }
+    $process.Refresh()
     if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
 }
 try {
@@ -35,6 +38,7 @@ try {
     }
     $registration = Get-ItemProperty -LiteralPath $registryKey
     if ($registration.DisplayVersion -ne $Version) { throw 'Incorrect registered version.' }
+    if ($registration.DisplayName -ne 'かんたん解凍') { throw "Incorrect Japanese application name: $($registration.DisplayName)" }
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($shortcut)
     if (-not (Test-Path -LiteralPath $shortcut) -or $link.TargetPath -ne $installedExe) {
@@ -51,9 +55,14 @@ try {
     Write-Output 'PASS install, shortcut, version, reinstall, uninstall, and preservation of user files'
 } finally {
     if (Test-Path -LiteralPath $uninstaller) {
-        Run-Setup $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
+        try { Run-Setup $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') }
+        catch { Write-Warning "Test cleanup could not uninstall: $_" }
     }
     # Only remove our named fixture; never recursively delete an install directory.
     if (Test-Path -LiteralPath $userFile) { Remove-Item -LiteralPath $userFile }
-    if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target }
+    if (Test-Path -LiteralPath $target) {
+        $remaining = @(Get-ChildItem -LiteralPath $target -Force)
+        if ($remaining.Count -eq 0) { Remove-Item -LiteralPath $target }
+        else { Write-Warning "Keeping non-empty test folder: $target ($($remaining.Name -join ', '))" }
+    }
 }

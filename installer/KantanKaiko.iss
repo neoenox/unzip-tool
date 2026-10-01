@@ -1,4 +1,4 @@
-; Build with scripts/build-installer.ps1. The application remains per-user.
+﻿; Build with scripts/build-installer.ps1. The application remains per-user.
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
