@@ -30,6 +30,13 @@ function Run-Setup([string]$FilePath, [string[]]$SetupArguments) {
     }
     $process.Refresh()
     if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
+    if ((Split-Path -Leaf $FilePath) -eq 'unins000.exe') {
+        # Inno's self-delete helper finishes just after the uninstaller exits.
+        $deadline = [DateTime]::UtcNow.AddSeconds(10)
+        while ((Test-Path -LiteralPath $FilePath) -and [DateTime]::UtcNow -lt $deadline) {
+            Start-Sleep -Milliseconds 100
+        }
+    }
 }
 try {
     Run-Setup $installer $arguments

@@ -30,6 +30,7 @@ jobs:
       - name: Test installer
         run: ./scripts/test-installer.ps1 -InstallerPath dist/KantanKaiko-Setup-1.0.0.exe -Version 1.0.0
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: KantanKaiko-windows
           path: |

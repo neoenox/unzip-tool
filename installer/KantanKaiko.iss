@@ -34,6 +34,7 @@ SolidCompression=yes
 WizardStyle=modern
 ShowLanguageDialog=no
 UninstallDisplayIcon={app}\KantanKaiko.exe
+UninstallDisplayName=かんたん解凍
 SetupLogging=yes
 
 [Languages]
