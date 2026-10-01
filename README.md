@@ -91,3 +91,7 @@ python tests/run_all.py
 - UIの配置は `ui.py`、状態と順次処理は `app.py`、作業プロセスは `jobs.py`、解凍と検査は `unzipper.py`。
 
 修正計画は [docs/implementation-plan.md](docs/implementation-plan.md)。PRではWindows CIが全テストとexeビルドを実行する。
+
+### v1.0.1
+インストールするとZIP等の「プログラムから開く」に登録されます。選んだ書庫を一覧に追加します。既定のアプリは自動変更しません。v1.0.0をご利用の場合は新しいインストーラーを上書き実行してください。
+
