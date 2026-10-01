@@ -25,7 +25,13 @@ jobs:
         run: python tests/run_all.py
       - name: Build executable
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+      - name: Build installer
+        run: ./scripts/build-installer.ps1 -Version 1.0.0
+      - name: Test installer
+        run: ./scripts/test-installer.ps1 -InstallerPath dist/KantanKaiko-Setup-1.0.0.exe -Version 1.0.0
       - uses: actions/upload-artifact@v4
         with:
           name: KantanKaiko-windows
-          path: dist/KantanKaiko.exe
+          path: |
+            dist/KantanKaiko.exe
+            dist/KantanKaiko-Setup-1.0.0.exe

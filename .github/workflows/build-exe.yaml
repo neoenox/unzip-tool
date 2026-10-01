@@ -31,10 +31,22 @@ jobs:
           if ($executable.PSIsContainer -or $executable.Length -eq 0) {
             throw "Release executable is missing or empty."
           }
+      - name: Build installer
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./scripts/build-installer.ps1 -Version ($env:RELEASE_TAG -replace '^v', '')
+      - name: Test installer
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          ./scripts/test-installer.ps1 -InstallerPath "dist/KantanKaiko-Setup-$version.exe" -Version $version
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.ref_name }}
-          files: dist/KantanKaiko.exe
+          files: |
+            dist/KantanKaiko.exe
+            dist/KantanKaiko-Setup-*.exe
           fail_on_unmatched_files: true
