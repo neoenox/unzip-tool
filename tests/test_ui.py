@@ -89,6 +89,35 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.app.selected.archive.name, 'two.zip')
         self.assertEqual(self.app.archive_var.get(), str(self.base / 'two.zip'))
 
+    def test_encrypted_headers_allow_password_retry(self):
+        src = self.base / 'headers.7z'
+        with py7zr.SevenZipFile(src, 'w', password='secret', header_encryption=True) as z:
+            z.writestr('hidden', 'hidden.txt')
+        self.app.on_drop_files([str(src)])
+        self.pump(lambda: self.app._pw_visible)
+        self.app.password_var.set('wrong')
+        self.app.start_extract()
+        self.pump(lambda: not self.app.busy)
+        self.assertEqual(self.app.jobs[0].state, 'password')
+        self.app.password_var.set('secret')
+        self.app.start_extract()
+        self.pump(lambda: self.app.jobs[0].state == 'done')
+        self.assertEqual((Path(self.app.jobs[0].result) / 'hidden.txt').read_text(), 'hidden')
+
+    def test_open_result_uses_actual_collision_destination(self):
+        src = self.archive('one.zip')
+        existing = self.base / 'one'
+        existing.mkdir()
+        self.app.on_drop_files([str(src)])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        self.app.start_extract()
+        self.pump(lambda: self.app.jobs[0].state == 'done')
+        job = self.app.jobs[0]
+        with patch('app.os.startfile') as open_folder:
+            self.app.open_result(job)
+            open_folder.assert_called_once_with(job.result)
+        self.assertEqual(Path(job.result).name, 'one (2)')
+
 
 if __name__ == '__main__':
     unittest.main()

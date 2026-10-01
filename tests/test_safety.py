@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from unzipper import clean_staging, default_dest_for, extract_archive
+from unzipper import PasswordRequiredError, clean_staging, default_dest_for, extract_archive
 
 
 class SafetyTests(unittest.TestCase):
@@ -104,6 +104,17 @@ class SafetyTests(unittest.TestCase):
             extract_archive(self.archive([('a', 'ok'), ('b', 'ok')]), self.base / 'out', fail)
         self.assertFalse((self.base / 'out').exists())
         self.assertFalse(list(self.base.glob('.kantan-*')))
+
+    def test_zip_password_failure_cleans_staging_and_retries(self):
+        src = Path(__file__).parent / 'vendor' / 'password-zipcrypto.zip'
+        for password in (None, b'wrong'):
+            with self.subTest(password=password):
+                with self.assertRaises(PasswordRequiredError):
+                    extract_archive(src, self.base / 'out', password=password)
+                self.assertFalse((self.base / 'out').exists())
+                self.assertFalse(list(self.base.glob('.kantan-*')))
+        result = extract_archive(src, self.base / 'out', password=b'test-only')
+        self.assertEqual((result / 'hello.txt').read_text(), 'test-only payload')
 
 
 if __name__ == '__main__':

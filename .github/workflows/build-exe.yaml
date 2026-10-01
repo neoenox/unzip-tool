@@ -21,11 +21,7 @@ jobs:
       - name: Install unrar (for tests)
         run: choco install unrar -y
       - name: Test
-        run: |
-          python tests/test_e2e.py
-          python tests/test_xproc_dnd.py
-          python tests/test_rar.py
-          python tests/test_7z.py
+        run: python tests/run_all.py
       - name: Build exe
         run: pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
       - name: Release

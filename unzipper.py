@@ -4,6 +4,7 @@ zip/tarは標準ライブラリのみ。rarは rarfile + 外部UnRARが必要。
 from __future__ import annotations
 
 import os
+import lzma
 import shutil
 import stat
 import tempfile
@@ -191,6 +192,10 @@ def list_contents(archive: str | os.PathLike, password: bytes | None = None) -> 
             return [Entry(i.filename, i.uncompressed or 0, i.is_directory) for i in sf.list()]
     except py7zr.exceptions.PasswordRequired as e:
         raise PasswordRequiredError("パスワードを入力してください。") from e
+    except (py7zr.exceptions.Bad7zFile, TypeError, ValueError, EOFError, lzma.LZMAError) as e:
+        if password and archive_needs_password(archive):
+            raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。入力して再試行してください。") from e
+        raise
 
 
 def archive_needs_password(archive: str | os.PathLike) -> bool:
@@ -262,8 +267,8 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
     if kind == "zip":
         with zipfile.ZipFile(archive) as zf:
             infos = zf.infolist()
-            if any(stat.S_ISLNK(i.external_attr >> 16) for i in infos):
-                raise ValueError("リンクを含む書庫は解凍できません。")
+            if any(stat.S_IFMT(i.external_attr >> 16) not in (0, stat.S_IFREG, stat.S_IFDIR) for i in infos):
+                raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
             try:
                 copy_members(infos, lambda i: zf.open(i, pwd=password))
             except RuntimeError as e:
@@ -307,7 +312,6 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
                 raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。") from e
             raise
         except Exception as e:
-            import lzma
             if isinstance(e, lzma.LZMAError) and password:
                 raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。") from e
             raise
