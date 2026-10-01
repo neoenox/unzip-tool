@@ -47,14 +47,18 @@ try {
     if ($registration.DisplayVersion -ne $Version) { throw 'Incorrect registered version.' }
     if ($registration.DisplayName -ne 'かんたん解凍') { throw "Incorrect Japanese application name: $($registration.DisplayName)" }
     $shell = New-Object -ComObject WScript.Shell
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
-    do {
-        $link = $shell.CreateShortcut($shortcut)
-        if ((Test-Path -LiteralPath $shortcut) -and $link.TargetPath -eq $installedExe) { break }
-        Start-Sleep -Milliseconds 100
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if (-not (Test-Path -LiteralPath $shortcut) -or $link.TargetPath -ne $installedExe) {
-        throw "Start menu shortcut mismatch: expected=$shortcut target=$($link.TargetPath) files=$((Get-ChildItem -LiteralPath $groupDirectory -ErrorAction SilentlyContinue).Name -join ',')"
+    if (-not (Test-Path -LiteralPath $shortcut)) { throw "Start menu shortcut missing: $shortcut" }
+    # WScript's shortcut reader uses the system code page on English Windows.
+    # Read the same shortcut bytes through an ASCII path to verify its target.
+    $shortcutCopy = Join-Path $target 'verify-shortcut.lnk'
+    try {
+        Copy-Item -LiteralPath $shortcut -Destination $shortcutCopy
+        $link = $shell.CreateShortcut($shortcutCopy)
+        if ($link.TargetPath -ne $installedExe) {
+            throw "Start menu shortcut target mismatch: expected=$installedExe actual=$($link.TargetPath)"
+        }
+    } finally {
+        if (Test-Path -LiteralPath $shortcutCopy) { Remove-Item -LiteralPath $shortcutCopy }
     }
     [IO.File]::WriteAllText($userFile, 'preserve me')
     Run-Setup $installer $arguments
