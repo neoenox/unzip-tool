@@ -1,6 +1,7 @@
 """シンプルな解凍ソフト (Windows / tkinter, 標準ライブラリのみ)。"""
 from __future__ import annotations
 
+import queue
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -36,8 +37,11 @@ class App(tk.Tk):
 
         self.archive_var = tk.StringVar()
         self.dest_var = tk.StringVar()
+        # ワーカースレッド→GUIの連絡用 (thread-safe)。afterは必ずメインスレッドで呼ぶ。
+        self._events: queue.Queue = queue.Queue()
 
         self._build_widgets()
+        self.after(100, self._poll_events)
 
         self._dnd_enabled = False
         if enable_drop is not None:
@@ -176,11 +180,26 @@ class App(tk.Tk):
     def _extract_worker(self, archive: str, dest: str) -> None:
         try:
             def cb(done: int, total: int) -> None:
-                self.after(0, lambda: self._on_progress(done, total))
+                self._events.put(("progress", done, total))
             extract_archive(archive, dest, on_progress=cb)
-            self.after(0, lambda: self._on_done(dest))
+            self._events.put(("done", dest))
         except Exception as e:  # noqa: BLE001
-            self.after(0, lambda: self._on_error(str(e)))
+            self._events.put(("error", str(e)))
+
+    def _poll_events(self) -> None:
+        try:
+            while True:
+                kind, *args = self._events.get_nowait()
+                if kind == "progress":
+                    self._on_progress(*args)
+                elif kind == "done":
+                    self._on_done(*args)
+                elif kind == "error":
+                    self._on_error(*args)
+        except queue.Empty:
+            pass
+        finally:
+            self.after(100, self._poll_events)
 
     def _on_progress(self, done: int, total: int) -> None:
         self.progress["maximum"] = max(total, 1)

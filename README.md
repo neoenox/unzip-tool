@@ -36,6 +36,14 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+## テスト
+
+```bat
+python tests/test_e2e.py
+```
+
+実物のAppウィンドウを使い、GUI解凍とOSレベルDnD (WM_DROPFILES送信) を端から端まで検証する。
+
 ## 仕様メモ
 
 - 日本語zipの文字化け対策あり (cp437 → cp932 再デコード)
