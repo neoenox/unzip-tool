@@ -107,6 +107,10 @@ class App(tk.Tk):
 
     def _empty_layout(self):
         self.card_region.pack_forget()
+        self.drop_area.configure(pady=16)
+        self.drop_title.pack_configure(side="top", padx=0, pady=(0, 6))
+        self.dnd_hint.pack(before=self.choose_btn)
+        self.choose_btn.pack_configure(side="top", padx=0, pady=(10, 0))
         self.drop_area.pack_configure(fill="both", expand=True)
         self.dest_var.set("元ファイルと同じ場所")
         self._update_buttons()
@@ -176,6 +180,10 @@ class App(tk.Tk):
                 destination = self._custom_parent / destination.name
             job = ArchiveJob(path, destination)
             self.jobs.append(job)
+            self.drop_area.configure(pady=8)
+            self.dnd_hint.pack_forget()
+            self.drop_title.pack_configure(side="left", padx=12, pady=0)
+            self.choose_btn.pack_configure(side="right", padx=12, pady=0)
             self.drop_area.pack_configure(fill="x", expand=False)
             self.card_region.pack(fill="both", expand=True, pady=(16, 8), before=self.options)
             self._new_card(job)
@@ -290,6 +298,7 @@ class App(tk.Tk):
         password_job = next((j for j in self.jobs if j.state == "password"), None)
         if password_job:
             self.select_job(password_job)
+            self.status.set(f"パスワードを入力して再試行してください。完了: {done} 件 / 未完了: {remaining} 件")
             self.pw_entry.focus_set()
 
     def cancel_extract(self):

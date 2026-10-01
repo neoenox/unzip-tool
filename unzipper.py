@@ -205,7 +205,6 @@ def archive_needs_password(archive: str | os.PathLike) -> bool:
             return any(i.flag_bits & 1 for i in zf.infolist())
     if kind == "rar":
         import rarfile
-        _setup_rar_tool()
         with rarfile.RarFile(archive) as rf:
             return rf.needs_password()
     if kind == "7z":

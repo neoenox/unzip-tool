@@ -37,7 +37,7 @@ def build_widgets(view):
     view.choose_btn.pack(pady=(10, 0))
     view.card_region = ttk.Frame(body)
     view.card_region.pack(fill="both", expand=True, pady=(16, 8))
-    view.canvas = tk.Canvas(view.card_region, bg="#f4f6f8", highlightthickness=0, height=140)
+    view.canvas = tk.Canvas(view.card_region, bg="#f4f6f8", highlightthickness=0, height=1)
     scroll = ttk.Scrollbar(view.card_region, command=view.canvas.yview)
     view.canvas.configure(yscrollcommand=scroll.set)
     scroll.pack(side="right", fill="y")

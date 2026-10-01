@@ -118,6 +118,18 @@ class UITests(unittest.TestCase):
             open_folder.assert_called_once_with(job.result)
         self.assertEqual(Path(job.result).name, 'one (2)')
 
+    def test_minimum_window_keeps_actions_visible_with_details_and_password(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        self.app.toggle_details()
+        self.app._show_password_row()
+        self.app.geometry('600x640')
+        self.app.deiconify()
+        self.app.update()
+        for button in (self.app.extract_btn, self.app.cancel_btn):
+            self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
+                                 self.app.winfo_rooty() + self.app.winfo_height())
+
 
 if __name__ == '__main__':
     unittest.main()
