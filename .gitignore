@@ -5,3 +5,7 @@ out/
 tmp/
 .venv/
 venv/
+# PyInstaller
+dist/
+build/
+*.spec

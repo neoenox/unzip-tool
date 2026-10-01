@@ -21,6 +21,20 @@ python app.py
 2. 解凍先フォルダを確認 (空なら自動で `アーカイブ名/` が入る)
 3. 「解凍する」を押す
 
+## exe化
+
+```bat
+build.bat
+REM → dist\KantanKaiko.exe ができる (単一ファイル、Python不要)
+```
+
+タグ `v*` をpushすると GitHub Actions が自動ビルドし、Releaseにexeを添付する。
+
+```bat
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## 仕様メモ
 
 - 日本語zipの文字化け対策あり (cp437 → cp932 再デコード)

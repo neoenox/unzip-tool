@@ -1,0 +1,25 @@
+name: build-exe
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build deps
+        run: pip install -r requirements-build.txt
+      - name: Build exe
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/KantanKaiko.exe
