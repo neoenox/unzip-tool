@@ -64,15 +64,14 @@ def test_7z_evil_names_rejected() -> None:
     dest = tmp / "out"
     dest.mkdir()
     # ..系・ドライブ絶対は拒否 (py7zr本体もBad7zFileで拒否する)
-    for evil in ("../evil.txt", "..\\evil.txt", "sub/../../evil.txt", "C:/win.txt"):
+    for evil in ("../evil.txt", "..\\evil.txt", "sub/../../evil.txt", "C:/win.txt", "/abs.txt"):
         try:
             _check_names_safe(dest, [evil])
         except ValueError:
             pass
         else:
             raise AssertionError(f"not rejected: {evil}")
-    # 先頭/ は剥離してdest内に収める (py7zrと同挙動のため安全)
-    _check_names_safe(dest, ["/abs.txt", "ok.txt", "sub/ok2.txt"])
+    _check_names_safe(dest, ["ok.txt", "sub/ok2.txt"])
 
 
 def main() -> int:

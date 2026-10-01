@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import stat
+import tempfile
 import sys
 import tarfile
 import zipfile
@@ -120,12 +122,37 @@ def _decode_zip_name(raw: str) -> str:
     return raw
 
 
+class PasswordRequiredError(ValueError):
+    """A password is missing or incorrect."""
+
+
+def _password_error(error: Exception) -> bool:
+    return isinstance(error, RuntimeError) and any(
+        word in str(error).lower() for word in ("password", "encrypted"))
+
+
+def _password_text(password: bytes | None) -> str | None:
+    return password.decode("utf-8") if password else None
+
+
 def _safe_join(base: Path, *parts: str) -> Path:
-    """Zip Slip対策: base 配下に収まらないパスは拒否する。"""
-    target = (base.joinpath(*parts)).resolve()
-    base_resolved = base.resolve()
-    if target != base_resolved and base_resolved not in target.parents:
-        raise ValueError(f"危険なパスをスキップしました: {os.path.join(*parts)}")
+    name = "/".join(parts).replace("\\", "/")
+    if name.startswith("/") or ":" in name:
+        raise ValueError(f"危険なパスです: {name}")
+    segments = name.split("/")
+    reserved = {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    reserved.update(f"{prefix}{i}" for prefix in ("com", "lpt") for i in "123456789¹²³")
+    for segment in segments:
+        if segment in ("", "."):
+            continue
+        if (segment == ".." or segment.endswith((".", " "))
+                or any(ord(c) < 32 or c in '<>"|?*' for c in segment)
+                or segment.split(".")[0].casefold() in reserved):
+            raise ValueError(f"Windowsで安全に保存できない名前です: {name}")
+    target = base.joinpath(*[x for x in segments if x not in ("", ".")]).resolve()
+    root = base.resolve()
+    if target != root and root not in target.parents:
+        raise ValueError(f"危険なパスです: {name}")
     return target
 
 
@@ -136,133 +163,197 @@ class Entry:
     is_dir: bool
 
 
-def list_contents(archive: str | os.PathLike) -> list[Entry]:
-    kind = detect_kind(archive)
-    entries: list[Entry] = []
-    if kind == "zip":
-        with zipfile.ZipFile(archive, "r") as zf:
-            for info in zf.infolist():
-                name = _decode_zip_name(info.filename)
-                entries.append(
-                    Entry(name=name, size=info.file_size, is_dir=info.is_dir())
-                )
-    elif kind == "rar":
-        import rarfile
+def _zip_name(info) -> str:
+    return info.filename if info.flag_bits & 0x800 else _decode_zip_name(info.filename)
 
+
+def list_contents(archive: str | os.PathLike, password: bytes | None = None) -> list[Entry]:
+    kind = detect_kind(archive)
+    if kind == "zip":
+        with zipfile.ZipFile(archive) as zf:
+            return [Entry(_zip_name(i), i.file_size, i.is_dir()) for i in zf.infolist()]
+    if kind == "tar":
+        with tarfile.open(archive, "r:*") as tf:
+            return [Entry(i.name, i.size, i.isdir()) for i in tf.getmembers()]
+    if kind == "rar":
+        import rarfile
+        _setup_rar_tool()
+        try:
+            with rarfile.RarFile(archive) as rf:
+                if password:
+                    rf.setpassword(_password_text(password))
+                return [Entry(i.filename, i.file_size, i.is_dir()) for i in rf.infolist()]
+        except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
+            raise PasswordRequiredError("パスワードを入力してください。") from e
+    import py7zr
+    try:
+        with py7zr.SevenZipFile(archive, password=_password_text(password)) as sf:
+            return [Entry(i.filename, i.uncompressed or 0, i.is_directory) for i in sf.list()]
+    except py7zr.exceptions.PasswordRequired as e:
+        raise PasswordRequiredError("パスワードを入力してください。") from e
+
+
+def archive_needs_password(archive: str | os.PathLike) -> bool:
+    kind = detect_kind(archive)
+    if kind == "zip":
+        with zipfile.ZipFile(archive) as zf:
+            return any(i.flag_bits & 1 for i in zf.infolist())
+    if kind == "rar":
+        import rarfile
         _setup_rar_tool()
         with rarfile.RarFile(archive) as rf:
-            for info in rf.infolist():
-                entries.append(Entry(name=info.filename, size=info.file_size, is_dir=info.is_dir()))
-    elif kind == "7z":
+            return rf.needs_password()
+    if kind == "7z":
         import py7zr
+        try:
+            with py7zr.SevenZipFile(archive) as sf:
+                return sf.needs_password()
+        except py7zr.exceptions.PasswordRequired:
+            return True
+    return False
 
-        with py7zr.SevenZipFile(archive, mode="r") as sf:
-            for info in sf.list():
-                size = getattr(info, "uncompressed", 0) or 0
-                entries.append(Entry(name=info.filename, size=size, is_dir=bool(info.is_directory)))
-    else:
-        with tarfile.open(archive, "r:*") as tf:
-            for m in tf.getmembers():
-                entries.append(Entry(name=m.name, size=m.size or 0, is_dir=m.isdir()))
-    return entries
+
+def _validate_entries(base: Path, entries: list[Entry]) -> None:
+    seen: dict[str, bool] = {}
+    for entry in entries:
+        target = _safe_join(base, entry.name)
+        key = target.relative_to(base.resolve()).as_posix().casefold()
+        if key == "." and entry.is_dir:
+            continue
+        if key == "." or key in seen:
+            raise ValueError(f"名前が重複しています: {entry.name}")
+        seen[key] = entry.is_dir
+    for key in seen:
+        parent = Path(key).parent
+        while str(parent) != ".":
+            if seen.get(parent.as_posix()) is False:
+                raise ValueError(f"ファイルとフォルダの名前が衝突しています: {key}")
+            parent = parent.parent
 
 
 def _check_names_safe(base: Path, names: list[str]) -> None:
-    """展開前に全名を検査する (7zは一括展開のため事前検査)。1つでも危険なら全体を拒否。"""
     for name in names:
-        _safe_join(base, Path(name).as_posix().lstrip("/"))
+        _safe_join(base, name)
 
 
-ProgressCb = Callable[[int, int], None]  # (完了件数, 全体件数)
+ProgressCb = Callable[[int, int], None]
 
 
-def extract_archive(
-    archive: str | os.PathLike,
-    dest: str | os.PathLike,
-    on_progress: ProgressCb | None = None,
-    password: bytes | None = None,
-) -> Path:
-    """アーカイブを dest に解凍して dest の Path を返す。"""
-    if not is_supported(archive):
-        raise ValueError(f"未対応の形式です: {archive}")
-    dest_path = Path(dest)
-    dest_path.mkdir(parents=True, exist_ok=True)
+def _extract_into(archive: str | os.PathLike, dest: Path,
+                  on_progress: ProgressCb | None = None, password: bytes | None = None,
+                  on_file: Callable[[str], None] | None = None) -> None:
+    """Write into a private staging directory; never publish from a worker."""
     kind = detect_kind(archive)
-
+    entries = list_contents(archive, password)
+    _validate_entries(dest, entries)
+    def copy_members(members, open_member):
+        for i, (entry, member) in enumerate(zip(entries, members), 1):
+            if on_file:
+                on_file(entry.name)
+            out = _safe_join(dest, entry.name)
+            if entry.is_dir:
+                out.mkdir(parents=True, exist_ok=True)
+            else:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                with open_member(member) as src, open(out, "xb") as fp:
+                    shutil.copyfileobj(src, fp, length=1024 * 1024)
+            if on_progress:
+                on_progress(i, len(entries))
     if kind == "zip":
-        with zipfile.ZipFile(archive, "r") as zf:
+        with zipfile.ZipFile(archive) as zf:
             infos = zf.infolist()
-            total = len(infos)
-            for i, info in enumerate(infos, 1):
-                fixed = _decode_zip_name(info.filename)
-                out = _safe_join(dest_path, Path(fixed).as_posix().lstrip("/"))
-                if info.is_dir():
-                    out.mkdir(parents=True, exist_ok=True)
-                else:
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(info, pwd=password) as src, open(out, "wb") as fp:
-                        fp.write(src.read())
-                if on_progress:
-                    on_progress(i, total)
-    elif kind == "rar":
-        import rarfile
-
-        _setup_rar_tool()
-        pwd = password.decode("utf-8", "ignore") if isinstance(password, bytes) else password
-        with rarfile.RarFile(archive) as rf:
-            infos = rf.infolist()
-            total = len(infos)
-            for i, info in enumerate(infos, 1):
-                out = _safe_join(dest_path, Path(info.filename).as_posix().lstrip("/"))
-                if info.is_dir():
-                    out.mkdir(parents=True, exist_ok=True)
-                else:
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    with rf.open(info, pwd=pwd) as src, open(out, "wb") as fp:
-                        shutil.copyfileobj(src, fp)
-                if on_progress:
-                    on_progress(i, total)
-    elif kind == "7z":
-        import py7zr
-
-        pwd = password.decode("utf-8", "ignore") if isinstance(password, bytes) else password
-        with py7zr.SevenZipFile(archive, mode="r", password=pwd) as sf:
-            names = [info.filename for info in sf.list()]
-            _check_names_safe(dest_path, names)
-            if on_progress:
-                on_progress(0, max(len(names), 1))
-            sf.extractall(path=dest_path)
-            if on_progress:
-                on_progress(max(len(names), 1), max(len(names), 1))
-    else:
+            if any(stat.S_ISLNK(i.external_attr >> 16) for i in infos):
+                raise ValueError("リンクを含む書庫は解凍できません。")
+            try:
+                copy_members(infos, lambda i: zf.open(i, pwd=password))
+            except RuntimeError as e:
+                if _password_error(e):
+                    raise PasswordRequiredError("パスワードが必要か、間違っています。入力して再試行してください。") from e
+                raise
+    elif kind == "tar":
         with tarfile.open(archive, "r:*") as tf:
             members = tf.getmembers()
-            total = len(members)
-            for i, m in enumerate(members, 1):
-                out = _safe_join(dest_path, m.name.lstrip("/"))
-                if m.isdir():
-                    out.mkdir(parents=True, exist_ok=True)
-                elif m.isfile():
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    src = tf.extractfile(m)
-                    if src is None:
-                        continue
-                    with src, open(out, "wb") as fp:
-                        fp.write(src.read())
-                # シンボリックリンク等はセキュリティのためスキップ (シンプル版)
+            if any(not (m.isdir() or m.isfile()) for m in members):
+                raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
+            copy_members(members, tf.extractfile)
+    elif kind == "rar":
+        import rarfile
+        _setup_rar_tool()
+        try:
+            with rarfile.RarFile(archive) as rf:
+                if password:
+                    rf.setpassword(_password_text(password))
+                members = rf.infolist()
+                if any(i.is_symlink() or getattr(i, "file_redir", None) for i in members):
+                    raise ValueError("リンクを含む書庫は解凍できません。")
+                copy_members(members, lambda i: rf.open(i, pwd=_password_text(password)))
+        except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
+            raise PasswordRequiredError("パスワードが必要か、間違っています。入力して再試行してください。") from e
+    else:
+        import py7zr
+        try:
+            with py7zr.SevenZipFile(archive, password=_password_text(password)) as sf:
+                if any(not (i.is_directory or i.is_file) or i.is_symlink or i.is_junction for i in sf.files):
+                    raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
                 if on_progress:
-                    on_progress(i, total)
+                    on_progress(0, 0)  # indeterminate, not a misleading percentage
+                sf.extractall(path=dest)
+                if on_progress:
+                    on_progress(len(entries), len(entries))
+        except py7zr.exceptions.PasswordRequired as e:
+            raise PasswordRequiredError("パスワードを入力してください。") from e
+        except (py7zr.exceptions.CrcError, EOFError) as e:
+            if password and archive_needs_password(archive):
+                raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。") from e
+            raise
+        except Exception as e:
+            import lzma
+            if isinstance(e, lzma.LZMAError) and password:
+                raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。") from e
+            raise
 
-    return dest_path
+
+def available_dest(dest: str | os.PathLike) -> Path:
+    original = Path(dest)
+    candidate = original
+    index = 2
+    while candidate.exists() or candidate.is_symlink():
+        candidate = original.with_name(f"{original.name} ({index})")
+        index += 1
+    return candidate
+
+
+def publish_staging(staging: Path, dest: str | os.PathLike) -> Path:
+    """Windows rename refuses existing targets, including race-time collisions."""
+    while True:
+        target = available_dest(dest)
+        try:
+            staging.rename(target)
+            return target
+        except FileExistsError:
+            continue
+
+
+def extract_archive(archive: str | os.PathLike, dest: str | os.PathLike,
+                    on_progress: ProgressCb | None = None,
+                    password: bytes | None = None) -> Path:
+    parent = Path(dest).absolute().parent
+    parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".kantan-", dir=parent))
+    try:
+        _extract_into(archive, staging, on_progress, password)
+        return publish_staging(staging, dest)
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
 
 
 def default_dest_for(archive: str | os.PathLike) -> Path:
-    """アーカイブと同じ場所に「名前のみ」のフォルダを切る場合の既定値。"""
     p = Path(archive)
     name = p.name
-    lower = name.lower()
-    for suf in (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz", ".txz", ".zip", ".rar", ".7z", ".tar"):
-        if lower.endswith(suf):
-            name = name[: -len(suf)]
+    for suffix in sorted(SUPPORTED_SUFFIXES, key=len, reverse=True):
+        if name.lower().endswith(suffix):
+            name = name[:-len(suffix)]
             break
-    return p.parent / name
+    # A name consisting only of a suffix must not select the source parent itself.
+    return p.parent / (name or "解凍したファイル")
