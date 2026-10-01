@@ -10,10 +10,18 @@ from unittest.mock import patch
 import py7zr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from app import App
+from app import App, main
 
 
 class UITests(unittest.TestCase):
+    def test_shell_launch_passes_paths_without_extracting(self):
+        paths = ['C:/日本語 フォルダ/archive.zip', 'C:/second.7z']
+        with patch('app.App') as constructor, patch('app.multiprocessing.freeze_support'):
+            main(paths)
+        constructor.return_value.on_drop_files.assert_called_once_with(paths)
+        constructor.return_value.start_extract.assert_not_called()
+        constructor.return_value.mainloop.assert_called_once()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import sys
 import tkinter as tk
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -441,9 +442,12 @@ class App(tk.Tk):
         self.destroy()
 
 
-def main():
+def main(argv=None):
     multiprocessing.freeze_support()
     app = App()
+    paths = sys.argv[1:] if argv is None else argv
+    if paths:
+        app.on_drop_files(paths)
     app.mainloop()
 
 

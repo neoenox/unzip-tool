@@ -46,6 +46,13 @@ try {
     $registration = Get-ItemProperty -LiteralPath $registryKey
     if ($registration.DisplayVersion -ne $Version) { throw 'Incorrect registered version.' }
     if ($registration.DisplayName -ne 'かんたん解凍') { throw "Incorrect Japanese application name: $($registration.DisplayName)" }
+    $classes = 'HKCU:\Software\Classes'
+    $command = (Get-Item -LiteralPath "$classes\KantanKaiko.Archive\shell\open\command").GetValue('')
+    if ($command -ne ('"' + $installedExe + '" "%1"')) { throw 'Incorrect archive open command.' }
+    foreach ($extension in @('.zip', '.7z', '.rar', '.tar', '.gz', '.tgz', '.bz2', '.tbz', '.xz', '.txz')) {
+        $key = Get-Item -LiteralPath "$classes\$extension\OpenWithProgids"
+        if ($key.GetValueNames() -notcontains 'KantanKaiko.Archive') { throw "Missing Open With registration: $extension" }
+    }
     $shell = New-Object -ComObject WScript.Shell
     if (-not (Test-Path -LiteralPath $shortcut)) { throw "Start menu shortcut missing: $shortcut" }
     # WScript's shortcut reader uses the system code page on English Windows.
@@ -68,6 +75,13 @@ try {
         throw 'Uninstall left application files, its shortcut, or registration.'
     }
     if ([IO.File]::ReadAllText($userFile) -ne 'preserve me') { throw 'Uninstall deleted user data.' }
+    if (Test-Path -LiteralPath "$classes\KantanKaiko.Archive") { throw 'Uninstall left the archive handler.' }
+    if (Test-Path -LiteralPath "$classes\Applications\KantanKaiko.exe") { throw 'Uninstall left the application handler.' }
+    foreach ($extension in @('.zip', '.7z', '.rar', '.tar', '.gz', '.tgz', '.bz2', '.tbz', '.xz', '.txz')) {
+        if (Test-Path -LiteralPath "$classes\$extension\OpenWithProgids") {
+            if ((Get-Item -LiteralPath "$classes\$extension\OpenWithProgids").GetValueNames() -contains 'KantanKaiko.Archive') { throw 'Uninstall left an Open With registration.' }
+        }
+    }
     Write-Output 'PASS install, shortcut, version, reinstall, uninstall, and preservation of user files'
 } finally {
     if (Test-Path -LiteralPath $uninstaller) {
