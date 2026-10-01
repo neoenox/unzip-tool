@@ -7,7 +7,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from unzipper import default_dest_for, extract_archive, is_supported, list_contents
+from unzipper import PasswordRequiredError, archive_needs_password, default_dest_for, extract_archive, is_supported, list_contents
 
 try:
     from dnd import disable_drop, enable_drop, take_dropped_files
@@ -69,10 +69,14 @@ class App(tk.Tk):
         row1.pack(fill="x")
         ttk.Entry(row1, textvariable=self.archive_var).pack(side="left", fill="x", expand=True, padx=(8, 4), pady=(8, 4))
         ttk.Button(row1, text="参照…", command=self.choose_archive).pack(side="left", padx=(0, 8))
-        row2 = ttk.Frame(frm)
-        row2.pack(fill="x")
-        ttk.Label(row2, text="パスワード(任意):").pack(side="left", padx=(8, 4), pady=(0, 8))
-        ttk.Entry(row2, textvariable=self.password_var, show="*", width=24).pack(side="left", pady=(0, 8))
+        # パスワード欄は必要な時だけ出す
+        self.pw_frame = ttk.Frame(frm)
+        ttk.Label(self.pw_frame, text="パスワード:").pack(side="left", padx=(8, 4), pady=(0, 8))
+        self.pw_entry = ttk.Entry(self.pw_frame, textvariable=self.password_var, show="*", width=24)
+        self.pw_entry.pack(side="left", pady=(0, 8))
+        self.pw_entry.bind("<Return>", lambda _e: self.start_extract())
+        self._pw_visible = False
+        self._listed_archive = ""
 
         # --- 解凍先 ---
         frm2 = ttk.LabelFrame(self, text="2. 解凍先フォルダ")
@@ -108,6 +112,18 @@ class App(tk.Tk):
         self.dnd_hint.pack(fill="x", padx=8, pady=(0, 8))
 
         self.archive_var.trace_add("write", lambda *_: self.refresh_list())
+        self.password_var.trace_add("write", lambda *_: self.refresh_list())
+
+    def _show_password_row(self) -> None:
+        if not self._pw_visible:
+            self.pw_frame.pack(fill="x")
+            self._pw_visible = True
+        self.pw_entry.focus_set()
+
+    def _hide_password_row(self) -> None:
+        if self._pw_visible:
+            self.pw_frame.pack_forget()
+            self._pw_visible = False
 
     def choose_archive(self) -> None:
         path = filedialog.askopenfilename(title="アーカイブを選択", filetypes=FILTERS)
@@ -167,8 +183,18 @@ class App(tk.Tk):
         if not is_supported(archive):
             self.status.set("未対応の形式です")
             return
+        # 対象が変わったらパスワードは捨てる
+        if archive != self._listed_archive:
+            self._listed_archive = archive
+            self.password_var.set("")
+            self._hide_password_row()
+        pwd = self.password_var.get()
         try:
-            entries = list_contents(archive)
+            entries = list_contents(archive, password=pwd.encode("utf-8") if pwd else None)
+        except PasswordRequiredError:
+            self.status.set("パスワードが必要です。入力すると一覧を表示します。")
+            self._show_password_row()
+            return
         except Exception as e:  # noqa: BLE001 - GUI表示のため
             self.status.set(f"一覧取得に失敗: {e}")
             return
@@ -177,6 +203,15 @@ class App(tk.Tk):
             self.tree.insert("", "end", text=e.name, values=(size,))
         extra = len(entries) - 2000
         self.status.set(f"{len(entries)} 件" + (f" (先頭2000件のみ表示)" if extra > 0 else ""))
+        # 一覧は出せても展開にPWが要る場合は先出しする
+        if not pwd:
+            try:
+                need_pw = archive_needs_password(archive)
+            except Exception:
+                need_pw = False
+            if need_pw:
+                self.status.set(self.status.get() + " (パスワードが必要です)")
+                self._show_password_row()
 
     def start_extract(self) -> None:
         archive = self.archive_var.get().strip().strip('"')
@@ -204,7 +239,7 @@ class App(tk.Tk):
             extract_archive(archive, dest, on_progress=cb, password=password)
             self._events.put(("done", dest))
         except Exception as e:  # noqa: BLE001
-            self._events.put(("error", str(e)))
+            self._events.put(("error", e))
 
     def _poll_events(self) -> None:
         try:
@@ -239,10 +274,15 @@ class App(tk.Tk):
         self.status.set(f"完了: {dest}")
         messagebox.showinfo(TITLE, f"解凍しました。\n{dest}")
 
-    def _on_error(self, msg: str) -> None:
+    def _on_error(self, err: Exception) -> None:
         self.extract_btn.config(state="normal")
+        if isinstance(err, PasswordRequiredError):
+            # パスワード欄を出して再入力を促す (モーダルは出さない)
+            self.status.set(f"{err} 入力してEnterか「解凍する」を押してください。")
+            self._show_password_row()
+            return
         self.status.set("エラーが発生しました")
-        messagebox.showerror(TITLE, f"解凍に失敗しました。\n{msg}")
+        messagebox.showerror(TITLE, f"解凍に失敗しました。\n{err}")
 
 
 def main() -> None:

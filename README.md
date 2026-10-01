@@ -31,9 +31,9 @@ python app.py
 
 1. 「参照…」でアーカイブを選択 (内容が一覧表示される)
    またはアーカイブをウィンドウにドラッグ＆ドロップ
-2. パスワード付きなら入力 (空でOK)
+2. パスワード付きなら欄が出るので入力 (不要な時は出ない)
 3. 解凍先フォルダを確認 (空なら自動で `アーカイブ名/` が入る、フォルダのドロップで指定も可)
-4. 「解凍する」を押す
+4. 「解凍する」を押す (パスワード欄ではEnterでも可)
 
 ## exe化
 
@@ -55,6 +55,9 @@ git push origin v0.1.0
 ```bat
 python tests/test_e2e.py
 python tests/test_xproc_dnd.py
+python tests/test_rar.py
+python tests/test_7z.py
+python tests/test_password.py
 ```
 
 実物のAppウィンドウを使い、GUI解凍・同一プロセス内DnD・別プロセス通知の堅牢性を検証する。

@@ -23,6 +23,10 @@ RAR_TOOL_HELP = (
 )
 
 
+class PasswordRequiredError(ValueError):
+    """パスワードが必要、または間違っている。GUIは入力欄を出して再試行させる。"""
+
+
 def is_supported(path: str | os.PathLike) -> bool:
     name = str(path).lower()
     return name.endswith(SUPPORTED_SUFFIXES)
@@ -101,6 +105,51 @@ def _setup_rar_tool() -> None:
     _rar_tool_ready = True
 
 
+def _is_zip_password_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return isinstance(e, RuntimeError) and ("password" in msg or "encrypted" in msg)
+
+
+def archive_needs_password(archive: str | os.PathLike) -> bool:
+    """展開にパスワードが要るか。壊れた書庫ではFalseを返し、後段の本処理に任せる。"""
+    kind = detect_kind(archive)
+    try:
+        if kind == "zip":
+            with zipfile.ZipFile(archive, "r") as zf:
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+                    try:
+                        zf.open(info).close()
+                    except RuntimeError as e:
+                        if _is_zip_password_error(e):
+                            return True
+                        raise
+                return False
+        elif kind == "rar":
+            import rarfile
+
+            _setup_rar_tool()
+            try:
+                with rarfile.RarFile(archive) as rf:
+                    return bool(rf.needs_password())
+            except (rarfile.PasswordRequired, rarfile.RarWrongPassword):
+                return True
+        elif kind == "7z":
+            import py7zr
+
+            try:
+                with py7zr.SevenZipFile(archive, mode="r") as sf:
+                    return bool(sf.needs_password())
+            except py7zr.exceptions.PasswordRequired:
+                return True
+    except PasswordRequiredError:
+        return True
+    except Exception:
+        return False
+    return False
+
+
 def _decode_zip_name(raw: str) -> str:
     """日本語zipの文字化け対策。
 
@@ -136,7 +185,16 @@ class Entry:
     is_dir: bool
 
 
-def list_contents(archive: str | os.PathLike) -> list[Entry]:
+def _as_str_pwd(password: bytes | str | None) -> str | None:
+    if isinstance(password, bytes):
+        return password.decode("utf-8", "ignore")
+    return password
+
+
+def list_contents(
+    archive: str | os.PathLike,
+    password: bytes | None = None,
+) -> list[Entry]:
     kind = detect_kind(archive)
     entries: list[Entry] = []
     if kind == "zip":
@@ -150,16 +208,22 @@ def list_contents(archive: str | os.PathLike) -> list[Entry]:
         import rarfile
 
         _setup_rar_tool()
-        with rarfile.RarFile(archive) as rf:
-            for info in rf.infolist():
-                entries.append(Entry(name=info.filename, size=info.file_size, is_dir=info.is_dir()))
+        try:
+            with rarfile.RarFile(archive) as rf:
+                for info in rf.infolist():
+                    entries.append(Entry(name=info.filename, size=info.file_size, is_dir=info.is_dir()))
+        except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
+            raise PasswordRequiredError("パスワードが必要です") from e
     elif kind == "7z":
         import py7zr
 
-        with py7zr.SevenZipFile(archive, mode="r") as sf:
-            for info in sf.list():
-                size = getattr(info, "uncompressed", 0) or 0
-                entries.append(Entry(name=info.filename, size=size, is_dir=bool(info.is_directory)))
+        try:
+            with py7zr.SevenZipFile(archive, mode="r", password=_as_str_pwd(password)) as sf:
+                for info in sf.list():
+                    size = getattr(info, "uncompressed", 0) or 0
+                    entries.append(Entry(name=info.filename, size=size, is_dir=bool(info.is_directory)))
+        except py7zr.exceptions.PasswordRequired as e:
+            raise PasswordRequiredError("パスワードが必要です") from e
     else:
         with tarfile.open(archive, "r:*") as tf:
             for m in tf.getmembers():
@@ -182,9 +246,14 @@ def extract_archive(
     on_progress: ProgressCb | None = None,
     password: bytes | None = None,
 ) -> Path:
-    """アーカイブを dest に解凍して dest の Path を返す。"""
+    """アーカイブを dest に解凍して dest の Path を返す。
+    パスワード不足・誤りの場合は PasswordRequiredError を投げる (中途半端な
+    展開で止めず、呼び出し側で入力を求めて再試行させるため、事前に検出する)。
+    """
     if not is_supported(archive):
         raise ValueError(f"未対応の形式です: {archive}")
+    if not password and archive_needs_password(archive):
+        raise PasswordRequiredError("パスワードが必要です")
     dest_path = Path(dest)
     dest_path.mkdir(parents=True, exist_ok=True)
     kind = detect_kind(archive)
@@ -200,40 +269,56 @@ def extract_archive(
                     out.mkdir(parents=True, exist_ok=True)
                 else:
                     out.parent.mkdir(parents=True, exist_ok=True)
-                    with zf.open(info, pwd=password) as src, open(out, "wb") as fp:
-                        fp.write(src.read())
+                    try:
+                        with zf.open(info, pwd=password) as src, open(out, "wb") as fp:
+                            fp.write(src.read())
+                    except RuntimeError as e:
+                        if _is_zip_password_error(e):
+                            raise PasswordRequiredError("パスワードが必要か、間違っています") from e
+                        raise
                 if on_progress:
                     on_progress(i, total)
     elif kind == "rar":
         import rarfile
 
         _setup_rar_tool()
-        pwd = password.decode("utf-8", "ignore") if isinstance(password, bytes) else password
-        with rarfile.RarFile(archive) as rf:
-            infos = rf.infolist()
-            total = len(infos)
-            for i, info in enumerate(infos, 1):
-                out = _safe_join(dest_path, Path(info.filename).as_posix().lstrip("/"))
-                if info.is_dir():
-                    out.mkdir(parents=True, exist_ok=True)
-                else:
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    with rf.open(info, pwd=pwd) as src, open(out, "wb") as fp:
-                        shutil.copyfileobj(src, fp)
-                if on_progress:
-                    on_progress(i, total)
+        pwd = _as_str_pwd(password)
+        try:
+            with rarfile.RarFile(archive) as rf:
+                infos = rf.infolist()
+                total = len(infos)
+                for i, info in enumerate(infos, 1):
+                    out = _safe_join(dest_path, Path(info.filename).as_posix().lstrip("/"))
+                    if info.is_dir():
+                        out.mkdir(parents=True, exist_ok=True)
+                    else:
+                        out.parent.mkdir(parents=True, exist_ok=True)
+                        with rf.open(info, pwd=pwd) as src, open(out, "wb") as fp:
+                            shutil.copyfileobj(src, fp)
+                    if on_progress:
+                        on_progress(i, total)
+        except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
+            raise PasswordRequiredError("パスワードが必要か、間違っています") from e
     elif kind == "7z":
         import py7zr
 
-        pwd = password.decode("utf-8", "ignore") if isinstance(password, bytes) else password
-        with py7zr.SevenZipFile(archive, mode="r", password=pwd) as sf:
-            names = [info.filename for info in sf.list()]
-            _check_names_safe(dest_path, names)
-            if on_progress:
-                on_progress(0, max(len(names), 1))
-            sf.extractall(path=dest_path)
-            if on_progress:
-                on_progress(max(len(names), 1), max(len(names), 1))
+        pwd = _as_str_pwd(password)
+        try:
+            with py7zr.SevenZipFile(archive, mode="r", password=pwd) as sf:
+                names = [info.filename for info in sf.list()]
+                _check_names_safe(dest_path, names)
+                if on_progress:
+                    on_progress(0, max(len(names), 1))
+                sf.extractall(path=dest_path)
+                if on_progress:
+                    on_progress(max(len(names), 1), max(len(names), 1))
+        except py7zr.exceptions.PasswordRequired as e:
+            raise PasswordRequiredError("パスワードが必要です") from e
+        except Exception as e:
+            # 誤パスワード時はLZMAError等で失敗する。暗号書庫ならPW誤り扱い。
+            if pwd and archive_needs_password(archive):
+                raise PasswordRequiredError("パスワードが違うか、ファイルが壊れています") from e
+            raise
     else:
         with tarfile.open(archive, "r:*") as tf:
             members = tf.getmembers()
