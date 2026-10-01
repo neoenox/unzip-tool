@@ -8,6 +8,12 @@ from tkinter import filedialog, messagebox, ttk
 
 from unzipper import default_dest_for, extract_archive, is_supported, list_contents
 
+try:
+    from dnd import disable_drop, enable_drop
+except ImportError:  # dnd.py が無い場合も起動はできる
+    enable_drop = None  # type: ignore[assignment]
+    disable_drop = None  # type: ignore[assignment]
+
 TITLE = "かんたん解凍"
 FILTERS = [
     ("対応アーカイブ", "*.zip *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
@@ -32,6 +38,16 @@ class App(tk.Tk):
         self.dest_var = tk.StringVar()
 
         self._build_widgets()
+
+        self._dnd_enabled = False
+        if enable_drop is not None:
+            try:
+                self._dnd_enabled = bool(enable_drop(self, self.on_drop_files))
+            except Exception:
+                self._dnd_enabled = False
+        if self._dnd_enabled:
+            self.dnd_hint.config(text="ファイルをこのウィンドウにドラッグ＆ドロップできます")
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_widgets(self) -> None:
         pad = {"padx": 8, "pady": 4}
@@ -70,7 +86,10 @@ class App(tk.Tk):
         self.progress.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         self.status = tk.StringVar(value="待機中")
-        ttk.Label(self, textvariable=self.status).pack(fill="x", padx=8, pady=(0, 8))
+        ttk.Label(self, textvariable=self.status).pack(fill="x", padx=8, pady=(0, 0))
+
+        self.dnd_hint = ttk.Label(self, text="", foreground="gray")
+        self.dnd_hint.pack(fill="x", padx=8, pady=(0, 8))
 
         self.archive_var.trace_add("write", lambda *_: self.refresh_list())
 
@@ -87,6 +106,35 @@ class App(tk.Tk):
         d = filedialog.askdirectory(title="解凍先フォルダを選択")
         if d:
             self.dest_var.set(d)
+
+    def on_drop_files(self, paths: list[str]) -> None:
+        """ドロップ受付: アーカイブ→入力欄、フォルダ→解凍先。"""
+        if not paths:
+            return
+        first = paths[0].strip().strip('"')
+        p = Path(first)
+        if p.is_dir():
+            self.dest_var.set(first)
+            self.status.set(f"解凍先に設定: {first}")
+        elif p.is_file() and is_supported(first):
+            self.archive_var.set(first)
+            if not self.dest_var.get().strip():
+                self.dest_var.set(str(default_dest_for(first)))
+            # refresh_list は trace 経由で自動実行される
+        elif p.is_file():
+            self.status.set(f"未対応の形式です: {p.suffix or first}")
+        else:
+            self.status.set(f"見つかりません: {first}")
+        if len(paths) > 1:
+            self.status.set(self.status.get() + " (複数あるため先頭のみ使用)")
+
+    def _on_close(self) -> None:
+        if disable_drop is not None:
+            try:
+                disable_drop(self)
+            except Exception:
+                pass
+        self.destroy()
 
     def refresh_list(self) -> None:
         for item in self.tree.get_children():
