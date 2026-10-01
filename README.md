@@ -48,7 +48,9 @@ REM → dist\KantanKaiko.exe ができる (単一ファイル、Python不要)
 REM tools\UnRAR.exe があれば同梱され、そのexe単体でrarも解凍できる
 ```
 
-タグ `v*` をpushすると GitHub Actions が自動ビルドし、Releaseにexeを添付する。
+リリースタグ（`v1.0.0` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` を自動添付する。ローカルでタグを作っただけでは実行されない。
+
+テスト・ビルド失敗時やexeが未生成・空の場合は公開処理へ進まない。通常のブランチpush・PR・手動実行ではReleaseを作成しない。新しい変更をリリースする場合は、対象のPRをマージしたコミットへタグを付ける。
 
 ```bat
 git tag v0.1.0
