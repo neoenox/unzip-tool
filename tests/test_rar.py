@@ -22,7 +22,7 @@ def tool_available() -> bool:
 
 def test_rar_basics() -> None:
     assert is_supported("a.rar")
-    assert not is_supported("a.7z")
+    assert not is_supported("a.xyz")
     assert detect_kind("a.rar") == "rar"
     assert default_dest_for("d/a.rar").name == "a"
 

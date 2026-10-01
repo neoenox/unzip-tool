@@ -1,4 +1,4 @@
-"""シンプルな解凍ソフト (Windows / tkinter)。zip/tarは標準ライブラリのみ、rarはrarfile+UnRARが必要。"""
+"""シンプルな解凍ソフト (Windows / tkinter)。zip/tarは標準ライブラリのみ、7z/rarは追加依存が必要。"""
 from __future__ import annotations
 
 import queue
@@ -20,8 +20,9 @@ except ImportError:  # dnd.py が無い場合も起動はできる
 
 TITLE = "かんたん解凍"
 FILTERS = [
-    ("対応アーカイブ", "*.zip *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
+    ("対応アーカイブ", "*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
     ("ZIP", "*.zip"),
+    ("7Z", "*.7z"),
     ("RAR", "*.rar"),
     ("TAR系", "*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
     ("すべて", "*.*"),
@@ -164,7 +165,7 @@ class App(tk.Tk):
         if not archive or not Path(archive).is_file():
             return
         if not is_supported(archive):
-            self.status.set("未対応の形式です (.zip / .rar / .tar系のみ)")
+            self.status.set("未対応の形式です")
             return
         try:
             entries = list_contents(archive)
@@ -184,7 +185,7 @@ class App(tk.Tk):
             messagebox.showwarning(TITLE, "アーカイブファイルを指定してください。")
             return
         if not is_supported(archive):
-            messagebox.showwarning(TITLE, "未対応の形式です (.zip / .rar / .tar系のみ)。")
+            messagebox.showwarning(TITLE, "未対応の形式です。")
             return
         if not dest:
             dest = str(default_dest_for(archive))

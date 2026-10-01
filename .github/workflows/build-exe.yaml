@@ -23,6 +23,7 @@ jobs:
           python tests/test_e2e.py
           python tests/test_xproc_dnd.py
           python tests/test_rar.py
+          python tests/test_7z.py
       - name: Build exe
         run: pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
       - name: Release

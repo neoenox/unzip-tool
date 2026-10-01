@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
-ArchiveKind = Literal["zip", "tar", "rar"]
+ArchiveKind = Literal["zip", "tar", "rar", "7z"]
 
-SUPPORTED_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz", ".rar")
+SUPPORTED_SUFFIXES = (".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz", ".rar")
 
 RAR_TOOL_HELP = (
     "RARの展開には別途 UnRAR が必要です。"
@@ -34,6 +34,8 @@ def detect_kind(path: str | os.PathLike) -> ArchiveKind:
         return "zip"
     if name.endswith(".rar"):
         return "rar"
+    if name.endswith(".7z"):
+        return "7z"
     if name.endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz")):
         return "tar"
     raise ValueError(f"未対応の形式です: {path}")
@@ -151,11 +153,24 @@ def list_contents(archive: str | os.PathLike) -> list[Entry]:
         with rarfile.RarFile(archive) as rf:
             for info in rf.infolist():
                 entries.append(Entry(name=info.filename, size=info.file_size, is_dir=info.is_dir()))
+    elif kind == "7z":
+        import py7zr
+
+        with py7zr.SevenZipFile(archive, mode="r") as sf:
+            for info in sf.list():
+                size = getattr(info, "uncompressed", 0) or 0
+                entries.append(Entry(name=info.filename, size=size, is_dir=bool(info.is_directory)))
     else:
         with tarfile.open(archive, "r:*") as tf:
             for m in tf.getmembers():
                 entries.append(Entry(name=m.name, size=m.size or 0, is_dir=m.isdir()))
     return entries
+
+
+def _check_names_safe(base: Path, names: list[str]) -> None:
+    """展開前に全名を検査する (7zは一括展開のため事前検査)。1つでも危険なら全体を拒否。"""
+    for name in names:
+        _safe_join(base, Path(name).as_posix().lstrip("/"))
 
 
 ProgressCb = Callable[[int, int], None]  # (完了件数, 全体件数)
@@ -207,6 +222,18 @@ def extract_archive(
                         shutil.copyfileobj(src, fp)
                 if on_progress:
                     on_progress(i, total)
+    elif kind == "7z":
+        import py7zr
+
+        pwd = password.decode("utf-8", "ignore") if isinstance(password, bytes) else password
+        with py7zr.SevenZipFile(archive, mode="r", password=pwd) as sf:
+            names = [info.filename for info in sf.list()]
+            _check_names_safe(dest_path, names)
+            if on_progress:
+                on_progress(0, max(len(names), 1))
+            sf.extractall(path=dest_path)
+            if on_progress:
+                on_progress(max(len(names), 1), max(len(names), 1))
     else:
         with tarfile.open(archive, "r:*") as tf:
             members = tf.getmembers()
@@ -234,7 +261,7 @@ def default_dest_for(archive: str | os.PathLike) -> Path:
     p = Path(archive)
     name = p.name
     lower = name.lower()
-    for suf in (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz", ".txz", ".zip", ".rar", ".tar"):
+    for suf in (".tar.gz", ".tar.bz2", ".tar.xz", ".tgz", ".tbz", ".txz", ".zip", ".rar", ".7z", ".tar"):
         if lower.endswith(suf):
             name = name[: -len(suf)]
             break
