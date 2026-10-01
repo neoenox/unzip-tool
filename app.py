@@ -95,7 +95,7 @@ class App(tk.Tk):
         job.open_button = ttk.Button(job.card, text="フォルダを開く", command=lambda: self.open_result(job))
         job.summary = ttk.Label(job.card, text="内容を確認しています…", style="CardMuted.TLabel")
         job.summary.pack(anchor="w", pady=(8, 4))
-        job.message = ttk.Label(job.card, text="確認中", style="Card.TLabel", wraplength=600)
+        job.message = ttk.Label(job.card, text="確認中", style="Card.TLabel", wraplength=max(280, self.winfo_width() - 96))
         job.message.pack(anchor="w")
         job.progress = ttk.Progressbar(job.card, mode="determinate")
 
@@ -112,7 +112,7 @@ class App(tk.Tk):
         self.dnd_hint.pack(before=self.choose_btn)
         self.choose_btn.pack_configure(side="top", padx=0, pady=(10, 0))
         self.drop_area.pack_configure(fill="both", expand=True)
-        self.dest_var.set("元ファイルと同じ場所")
+        self.dest_var.set(str(self._custom_parent) if self._custom_parent else "元ファイルと同じ場所")
         self._update_buttons()
 
     def _archive_changed(self, *_):

@@ -78,7 +78,7 @@ class BackgroundTask:
                 break
             try:
                 kind, payload = self.connection.recv()
-            except EOFError:
+            except (EOFError, OSError):
                 kind, payload = 'error', '処理が予期せず終了しました。もう一度お試しください。'
             if kind in ('done', 'error', 'password'):
                 self.process.join(1)
