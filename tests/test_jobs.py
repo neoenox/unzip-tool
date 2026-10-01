@@ -56,6 +56,22 @@ class JobTests(unittest.TestCase):
         self.assertFalse(list(self.base.glob('.kantan-*')))
         self.assertEqual(task.poll(), [])
 
+    def test_live_cancel_stops_process_and_cleans_staging(self):
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
+        self.assertTrue(task.process.is_alive())
+        task.cancel()
+        self.assertFalse(task.process.is_alive())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+        self.assertFalse((self.base / 'out').exists())
+
+    def test_unexpected_worker_exit_reports_error(self):
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
+        task.process.terminate()
+        task.process.join(5)
+        kind, _payload = self.finish(task)
+        self.assertEqual(kind, 'error')
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+
 
 if __name__ == '__main__':
     unittest.main()

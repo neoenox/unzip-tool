@@ -3,14 +3,13 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from unzipper import (
     PasswordRequiredError, _extract_into, archive_needs_password,
-    list_contents, publish_staging,
+    clean_staging, list_contents, publish_staging,
 )
 
 
@@ -61,13 +60,18 @@ class BackgroundTask:
             child.close()
 
     def _clean_staging(self):
-        if self.staging is not None and self.staging.exists():
-            shutil.rmtree(self.staging)
+        if self.staging is not None:
+            clean_staging(self.staging)
 
     def poll(self):
         if self.finished:
             return []
         events = []
+        if not self.process.is_alive() and not self.connection.poll():
+            self.finished = True
+            self.connection.close()
+            self._clean_staging()
+            return [('error', '処理が予期せず終了しました。もう一度お試しください。')]
         # Bound work per Tk tick so huge archives cannot starve the GUI.
         for _ in range(100):
             if not self.connection.poll():

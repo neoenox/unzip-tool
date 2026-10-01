@@ -1,5 +1,7 @@
 """Extraction must never overwrite or publish partial results."""
 import io
+import os
+import stat
 import sys
 import tarfile
 import tempfile
@@ -8,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from unzipper import extract_archive
+from unzipper import clean_staging, default_dest_for, extract_archive
 
 
 class SafetyTests(unittest.TestCase):
@@ -71,6 +73,37 @@ class SafetyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             extract_archive(src, self.base / 'out')
         self.assertFalse((self.base / 'out').exists())
+
+    def test_zip_link_rejected(self):
+        src = self.base / 'link.zip'
+        with zipfile.ZipFile(src, 'w') as z:
+            info = zipfile.ZipInfo('link')
+            info.create_system = 3
+            info.external_attr = (stat.S_IFLNK | 0o777) << 16
+            z.writestr(info, '../escape')
+        with self.assertRaises(ValueError):
+            extract_archive(src, self.base / 'out')
+        self.assertFalse((self.base / 'out').exists())
+
+    def test_readonly_staging_is_cleaned(self):
+        staging = self.base / '.kantan-readonly'
+        staging.mkdir()
+        file = staging / 'file.txt'
+        file.write_text('test')
+        os.chmod(file, stat.S_IREAD)
+        clean_staging(staging)
+        self.assertFalse(staging.exists())
+
+    def test_suffix_only_archive_has_dedicated_destination(self):
+        self.assertEqual(default_dest_for(self.base / '.zip').name, '解凍したファイル')
+
+    def test_progress_failure_cleans_partial_result(self):
+        def fail(_done, _total):
+            raise RuntimeError('injected failure')
+        with self.assertRaises(RuntimeError):
+            extract_archive(self.archive([('a', 'ok'), ('b', 'ok')]), self.base / 'out', fail)
+        self.assertFalse((self.base / 'out').exists())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
 
 
 if __name__ == '__main__':

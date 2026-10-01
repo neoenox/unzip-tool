@@ -334,6 +334,14 @@ def publish_staging(staging: Path, dest: str | os.PathLike) -> Path:
             continue
 
 
+def clean_staging(staging: Path) -> None:
+    def writable_remove(function, path, _error):
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        function(path)
+    if staging.exists():
+        shutil.rmtree(staging, onerror=writable_remove)
+
+
 def extract_archive(archive: str | os.PathLike, dest: str | os.PathLike,
                     on_progress: ProgressCb | None = None,
                     password: bytes | None = None) -> Path:
@@ -344,8 +352,7 @@ def extract_archive(archive: str | os.PathLike, dest: str | os.PathLike,
         _extract_into(archive, staging, on_progress, password)
         return publish_staging(staging, dest)
     finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+        clean_staging(staging)
 
 
 def default_dest_for(archive: str | os.PathLike) -> Path:
