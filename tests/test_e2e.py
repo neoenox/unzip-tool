@@ -22,7 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import App  # noqa: E402
 
 WM_DROPFILES = 0x0233
-GHND = 0x0002 | 0x0040
+# GMEM_MOVEABLE | GMEM_ZEROINIT | GMEM_DDESHARE
+# DDESHARE必須: 実ドロップ(Explorer等)は共有メモリで来る。付けないと
+# 別プロセスからのDragQuery/DragFinishが壊れる (テスト側の再現条件)。
+GHND = 0x0002 | 0x0040 | 0x2000
 
 
 class POINT(ctypes.Structure):

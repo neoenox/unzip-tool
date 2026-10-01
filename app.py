@@ -10,10 +10,13 @@ from tkinter import filedialog, messagebox, ttk
 from unzipper import default_dest_for, extract_archive, is_supported, list_contents
 
 try:
-    from dnd import disable_drop, enable_drop
+    from dnd import disable_drop, enable_drop, take_dropped_files
 except ImportError:  # dnd.py が無い場合も起動はできる
     enable_drop = None  # type: ignore[assignment]
     disable_drop = None  # type: ignore[assignment]
+
+    def take_dropped_files(widget) -> list:  # type: ignore[misc]
+        return []
 
 TITLE = "かんたん解凍"
 FILTERS = [
@@ -41,12 +44,12 @@ class App(tk.Tk):
         self._events: queue.Queue = queue.Queue()
 
         self._build_widgets()
-        self.after(100, self._poll_events)
+        self._poll_id: str | None = self.after(100, self._poll_events)
 
         self._dnd_enabled = False
         if enable_drop is not None:
             try:
-                self._dnd_enabled = bool(enable_drop(self, self.on_drop_files))
+                self._dnd_enabled = bool(enable_drop(self))
             except Exception:
                 self._dnd_enabled = False
         if self._dnd_enabled:
@@ -133,6 +136,12 @@ class App(tk.Tk):
             self.status.set(self.status.get() + " (複数あるため先頭のみ使用)")
 
     def _on_close(self) -> None:
+        if self._poll_id is not None:
+            try:
+                self.after_cancel(self._poll_id)
+            except Exception:
+                pass
+            self._poll_id = None
         if disable_drop is not None:
             try:
                 disable_drop(self)
@@ -188,6 +197,11 @@ class App(tk.Tk):
 
     def _poll_events(self) -> None:
         try:
+            for paths in take_dropped_files(self):
+                try:
+                    self.on_drop_files(paths)
+                except Exception:
+                    pass
             while True:
                 kind, *args = self._events.get_nowait()
                 if kind == "progress":
@@ -199,7 +213,10 @@ class App(tk.Tk):
         except queue.Empty:
             pass
         finally:
-            self.after(100, self._poll_events)
+            try:
+                self._poll_id = self.after(100, self._poll_events)
+            except tk.TclError:
+                self._poll_id = None
 
     def _on_progress(self, done: int, total: int) -> None:
         self.progress["maximum"] = max(total, 1)

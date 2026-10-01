@@ -40,12 +40,15 @@ git push origin v0.1.0
 
 ```bat
 python tests/test_e2e.py
+python tests/test_xproc_dnd.py
 ```
 
-実物のAppウィンドウを使い、GUI解凍とOSレベルDnD (WM_DROPFILES送信) を端から端まで検証する。
+実物のAppウィンドウを使い、GUI解凍・同一プロセス内DnD・別プロセス通知の堅牢性を検証する。
+真のExplorerドロップ配送はOLE共有メモリ経由のため合成不可。初回は手で1回試すこと。
 
 ## 仕様メモ
 
+- DnDはpoll方式: WndProc内ではTkを一切触らない (別プロセス通知時の再入で落ちるため)
 - 日本語zipの文字化け対策あり (cp437 → cp932 再デコード)
 - Zip Slip対策あり (アーカイブ外への書き込みを拒否、危険パスはエラー)
 - tarのシンボリックリンク等はスキップ (シンプル版の安全策)
