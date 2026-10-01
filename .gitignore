@@ -9,3 +9,5 @@ venv/
 dist/
 build/
 *.spec
+# UnRARバイナリ置き場 (各自で用意、コミットしない)
+tools/

@@ -1,4 +1,4 @@
-"""シンプルな解凍ソフト (Windows / tkinter, 標準ライブラリのみ)。"""
+"""シンプルな解凍ソフト (Windows / tkinter)。zip/tarは標準ライブラリのみ、rarはrarfile+UnRARが必要。"""
 from __future__ import annotations
 
 import queue
@@ -20,8 +20,9 @@ except ImportError:  # dnd.py が無い場合も起動はできる
 
 TITLE = "かんたん解凍"
 FILTERS = [
-    ("対応アーカイブ", "*.zip *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
+    ("対応アーカイブ", "*.zip *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
     ("ZIP", "*.zip"),
+    ("RAR", "*.rar"),
     ("TAR系", "*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
     ("すべて", "*.*"),
 ]
@@ -40,6 +41,7 @@ class App(tk.Tk):
 
         self.archive_var = tk.StringVar()
         self.dest_var = tk.StringVar()
+        self.password_var = tk.StringVar()
         # ワーカースレッド→GUIの連絡用 (thread-safe)。afterは必ずメインスレッドで呼ぶ。
         self._events: queue.Queue = queue.Queue()
 
@@ -62,8 +64,14 @@ class App(tk.Tk):
         # --- アーカイブ選択 ---
         frm = ttk.LabelFrame(self, text="1. アーカイブを選択")
         frm.pack(fill="x", **pad)
-        ttk.Entry(frm, textvariable=self.archive_var).pack(side="left", fill="x", expand=True, padx=(8, 4), pady=8)
-        ttk.Button(frm, text="参照…", command=self.choose_archive).pack(side="left", padx=(0, 8))
+        row1 = ttk.Frame(frm)
+        row1.pack(fill="x")
+        ttk.Entry(row1, textvariable=self.archive_var).pack(side="left", fill="x", expand=True, padx=(8, 4), pady=(8, 4))
+        ttk.Button(row1, text="参照…", command=self.choose_archive).pack(side="left", padx=(0, 8))
+        row2 = ttk.Frame(frm)
+        row2.pack(fill="x")
+        ttk.Label(row2, text="パスワード(任意):").pack(side="left", padx=(8, 4), pady=(0, 8))
+        ttk.Entry(row2, textvariable=self.password_var, show="*", width=24).pack(side="left", pady=(0, 8))
 
         # --- 解凍先 ---
         frm2 = ttk.LabelFrame(self, text="2. 解凍先フォルダ")
@@ -156,7 +164,7 @@ class App(tk.Tk):
         if not archive or not Path(archive).is_file():
             return
         if not is_supported(archive):
-            self.status.set("未対応の形式です (.zip / .tar系のみ)")
+            self.status.set("未対応の形式です (.zip / .rar / .tar系のみ)")
             return
         try:
             entries = list_contents(archive)
@@ -176,21 +184,23 @@ class App(tk.Tk):
             messagebox.showwarning(TITLE, "アーカイブファイルを指定してください。")
             return
         if not is_supported(archive):
-            messagebox.showwarning(TITLE, "未対応の形式です (.zip / .tar系のみ)。")
+            messagebox.showwarning(TITLE, "未対応の形式です (.zip / .rar / .tar系のみ)。")
             return
         if not dest:
             dest = str(default_dest_for(archive))
             self.dest_var.set(dest)
+        pwd = self.password_var.get()
+        password = pwd.encode("utf-8") if pwd else None
         self.extract_btn.config(state="disabled")
         self.progress["value"] = 0
         self.status.set("解凍中…")
-        threading.Thread(target=self._extract_worker, args=(archive, dest), daemon=True).start()
+        threading.Thread(target=self._extract_worker, args=(archive, dest, password), daemon=True).start()
 
-    def _extract_worker(self, archive: str, dest: str) -> None:
+    def _extract_worker(self, archive: str, dest: str, password: bytes | None) -> None:
         try:
             def cb(done: int, total: int) -> None:
                 self._events.put(("progress", done, total))
-            extract_archive(archive, dest, on_progress=cb)
+            extract_archive(archive, dest, on_progress=cb, password=password)
             self._events.put(("done", dest))
         except Exception as e:  # noqa: BLE001
             self._events.put(("error", str(e)))

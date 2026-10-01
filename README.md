@@ -1,13 +1,24 @@
 # かんたん解凍 (unzip-tool)
 
-Windows向けのシンプルな解凍ソフト。Python標準ライブラリのみ、外部依存なし。
+Windows向けのシンプルな解凍ソフト。zip/tarは依存なし、rarのみ外部ツールが必要。
 
-## 対応形式 (v1 シンプル版)
+## 対応形式
 
-- `.zip`
+- `.zip` (パスワード対応)
+- `.rar` (RAR4/5、パスワード対応、要UnRAR)
 - `.tar` / `.tar.gz` / `.tgz` / `.tar.bz2` / `.tar.xz`
 
-※ `.7z` / `.rar` / パスワード付きは未対応 (あとで追加可能)
+※ `.7z` / 分割rar / 自己解凍形式は未対応 (あとで追加可能)
+
+## RARに必要なもの
+
+いずれか1つ。無ければrar選択時に案内が出る。
+
+1. WinRARをインストール (UnRAR.exe を自動検出)
+2. `tools/UnRAR.exe` を置く (同梱のexe化も可能→下記)
+3. 環境変数 `KANTAN_UNRAR` にUnRAR.exeのパスを指定
+
+UnRARはフリーウェア ([rarlab](https://www.rarlab.com/rar_add.htm) のUnRAR for Windows)。
 
 ## 使い方
 
@@ -19,14 +30,16 @@ python app.py
 
 1. 「参照…」でアーカイブを選択 (内容が一覧表示される)
    またはアーカイブをウィンドウにドラッグ＆ドロップ
-2. 解凍先フォルダを確認 (空なら自動で `アーカイブ名/` が入る、フォルダのドロップで指定も可)
-3. 「解凍する」を押す
+2. パスワード付きなら入力 (空でOK)
+3. 解凍先フォルダを確認 (空なら自動で `アーカイブ名/` が入る、フォルダのドロップで指定も可)
+4. 「解凍する」を押す
 
 ## exe化
 
 ```bat
 build.bat
 REM → dist\KantanKaiko.exe ができる (単一ファイル、Python不要)
+REM tools\UnRAR.exe があれば同梱され、そのexe単体でrarも解凍できる
 ```
 
 タグ `v*` をpushすると GitHub Actions が自動ビルドし、Releaseにexeを添付する。

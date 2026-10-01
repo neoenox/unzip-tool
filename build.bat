@@ -1,9 +1,13 @@
 @echo off
-REM かんたん解凍のexeビルド (要 Python 3.11+)
-REM 使い方: build.bat
+REM Build KantanKaiko.exe (requires Python 3.11+)
+REM Usage: build.bat
+REM If tools\UnRAR.exe exists, it is bundled so rar works standalone.
 setlocal
 cd /d "%~dp0"
+pip install -r requirements.txt
 pip install -r requirements-build.txt
-pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+set ADD_BIN=
+if exist "tools\UnRAR.exe" set ADD_BIN=--add-binary "tools\UnRAR.exe;tools"
+pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko %ADD_BIN% app.py
 echo.
-echo 完成: dist\KantanKaiko.exe
+echo Done: dist\KantanKaiko.exe
