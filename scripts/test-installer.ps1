@@ -49,7 +49,7 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($shortcut)
     if (-not (Test-Path -LiteralPath $shortcut) -or $link.TargetPath -ne $installedExe) {
-        throw 'Start menu shortcut is missing or points to the wrong executable.'
+        throw "Start menu shortcut mismatch: expected=$shortcut target=$($link.TargetPath) files=$((Get-ChildItem -LiteralPath $groupDirectory -ErrorAction SilentlyContinue).Name -join ',')"
     }
     [IO.File]::WriteAllText($userFile, 'preserve me')
     Run-Setup $installer $arguments
