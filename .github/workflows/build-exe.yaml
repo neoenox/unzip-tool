@@ -4,11 +4,11 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -21,16 +21,32 @@ jobs:
       - name: Install unrar (for tests)
         run: choco install unrar -y
       - name: Test
-        run: |
-          python tests/test_e2e.py
-          python tests/test_xproc_dnd.py
-          python tests/test_rar.py
-          python tests/test_7z.py
-          python tests/test_password.py
+        run: python tests/run_all.py
       - name: Build exe
-        run: pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+      - name: Verify release executable
+        shell: pwsh
+        run: |
+          $executable = Get-Item -LiteralPath dist/KantanKaiko.exe -ErrorAction Stop
+          if ($executable.PSIsContainer -or $executable.Length -eq 0) {
+            throw "Release executable is missing or empty."
+          }
+      - name: Build installer
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./scripts/build-installer.ps1 -Version ($env:RELEASE_TAG -replace '^v', '')
+      - name: Test installer
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          ./scripts/test-installer.ps1 -InstallerPath "dist/KantanKaiko-Setup-$version.exe" -Version $version
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/KantanKaiko.exe
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist/KantanKaiko.exe
+            dist/KantanKaiko-Setup-*.exe
+          fail_on_unmatched_files: true
