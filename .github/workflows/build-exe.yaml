@@ -13,6 +13,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify release commit is on main
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tags must point to a commit already merged into main."
+          }
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

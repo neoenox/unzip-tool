@@ -36,6 +36,44 @@ class JobTests(unittest.TestCase):
         self.assertEqual(entries[0].name, 'hello.txt')
         self.assertFalse(needs_password)
 
+    def large_archive(self):
+        block = b'large archive test\n' * 58254
+        with zipfile.ZipFile(self.archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as z:
+            with z.open('large.bin', 'w') as member:
+                for _ in range(256):
+                    member.write(block)
+        return len(block) * 256
+
+    def test_large_file_streams_to_disk(self):
+        size = self.large_archive()
+        kind, payload = self.finish(BackgroundTask('extract', self.archive, dest=self.base / 'large'))
+        self.assertEqual(kind, 'done')
+        self.assertEqual((Path(payload) / 'large.bin').stat().st_size, size)
+
+    def test_cancel_after_large_file_has_started_writing(self):
+        self.large_archive()
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'large')
+        self.addCleanup(task.cancel)
+        deadline = time.monotonic() + 20
+        partial = task.staging / 'large.bin'
+        while time.monotonic() < deadline:
+            if partial.exists() and partial.stat().st_size > 0:
+                break
+            time.sleep(.002)
+        self.assertTrue(partial.exists())
+        self.assertGreater(partial.stat().st_size, 0)
+        self.assertTrue(task.process.is_alive())
+        task.cancel()
+        self.assertFalse(task.process.is_alive())
+        self.assertFalse((self.base / 'large').exists())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+
+    def test_corrupt_archive_returns_actionable_error(self):
+        self.archive.write_bytes(b'not a zip file')
+        kind, message = self.finish(BackgroundTask('list', self.archive))
+        self.assertEqual(kind, 'error')
+        self.assertIn('壊れている', message)
+
     def test_extract_publishes_only_after_parent_accepts_result(self):
         dest = self.base / 'out'
         task = BackgroundTask('extract', self.archive, dest=dest)

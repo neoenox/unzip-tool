@@ -12,7 +12,7 @@ from tkinter import filedialog, ttk
 from dnd import disable_drop, enable_drop, take_dropped_files
 from jobs import BackgroundTask
 from ui import build_widgets
-from unzipper import Entry, available_dest, default_dest_for, is_supported
+from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 
 TITLE = "かんたん解凍"
 FILTERS = [
@@ -279,7 +279,7 @@ class App(tk.Tk):
                                       job.password.encode("utf-8") if job.password else None, job.dest)
             except Exception as error:
                 job.state = "failed"
-                job.message.configure(text=f"解凍できません: {error}")
+                job.message.configure(text=f"解凍できません: {error_message(error)}")
                 continue
             self._extracting = task, job
             job.state = "extracting"
@@ -392,7 +392,7 @@ class App(tk.Tk):
                 except Exception as error:
                     job.inspected = job.revision
                     job.state = "failed"
-                    job.message.configure(text=str(error))
+                    job.message.configure(text=error_message(error))
                     self._update_buttons()
 
     def open_result(self, job):

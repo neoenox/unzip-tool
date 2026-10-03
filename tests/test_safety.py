@@ -1,5 +1,6 @@
 """Extraction must never overwrite or publish partial results."""
 import io
+import errno
 import os
 import stat
 import sys
@@ -8,12 +9,29 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from unzipper import PasswordRequiredError, clean_staging, default_dest_for, extract_archive
+from unzipper import PasswordRequiredError, clean_staging, default_dest_for, extract_archive, error_message
 
 
 class SafetyTests(unittest.TestCase):
+    def test_user_can_understand_storage_and_corruption_errors(self):
+        self.assertIn('空き容量', error_message(OSError(errno.ENOSPC, 'No space left')))
+        self.assertIn('壊れている', error_message(zipfile.BadZipFile('Bad CRC')))
+        self.assertIn('アクセス', error_message(PermissionError(errno.EACCES, 'Permission denied')))
+
+    def test_disk_full_after_partial_write_discards_output(self):
+        src = self.archive([('a.txt', 'payload')])
+        def disk_full(source, target, **kwargs):
+            target.write(b'partial')
+            raise OSError(errno.ENOSPC, 'No space left')
+        with patch('unzipper.shutil.copyfileobj', side_effect=disk_full):
+            with self.assertRaises(OSError):
+                extract_archive(src, self.base / 'out')
+        self.assertFalse((self.base / 'out').exists())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
