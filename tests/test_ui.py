@@ -1,5 +1,6 @@
 """Real Tk flows, including multiple archives, retry and cancellation."""
 import sys
+import errno
 import tempfile
 import time
 import unittest
@@ -53,6 +54,25 @@ class UITests(unittest.TestCase):
         self.app.toggle_details()
         self.assertEqual(self.app.details.winfo_manager(), 'pack')
         self.assertEqual(self.app.tree.item(self.app.tree.get_children()[0])['text'], 'folder')
+
+    def test_corrupt_archive_does_not_block_next_archive(self):
+        broken = self.base / 'broken.zip'
+        broken.write_bytes(b'not a zip')
+        self.app.on_drop_files([str(broken), str(self.archive('good.zip'))])
+        self.pump(lambda: all(j.state != 'scanning' for j in self.app.jobs))
+        self.assertIn('壊れている', self.app.jobs[0].message.cget('text'))
+        self.assertEqual(self.app.jobs[0].summary.cget('text'), '内容を確認できません')
+        self.app.start_extract()
+        self.pump(lambda: not self.app.busy)
+        self.assertEqual(self.app.jobs[1].state, 'done')
+
+    def test_disk_full_during_task_start_has_japanese_guidance(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        with patch('app.BackgroundTask', side_effect=OSError(errno.ENOSPC, 'No space left')):
+            self.app.start_extract()
+        self.assertFalse(self.app.busy)
+        self.assertIn('空き容量', self.app.jobs[0].message.cget('text'))
 
     def test_batch_extract_without_popups(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])

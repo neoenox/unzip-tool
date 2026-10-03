@@ -12,7 +12,7 @@ from tkinter import filedialog, ttk
 from dnd import disable_drop, enable_drop, take_dropped_files
 from jobs import BackgroundTask
 from ui import build_widgets
-from unzipper import Entry, available_dest, default_dest_for, is_supported
+from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 
 TITLE = "かんたん解凍"
 FILTERS = [
@@ -279,7 +279,7 @@ class App(tk.Tk):
                                       job.password.encode("utf-8") if job.password else None, job.dest)
             except Exception as error:
                 job.state = "failed"
-                job.message.configure(text=f"解凍できません: {error}")
+                job.message.configure(text=f"解凍できません: {error_message(error)}")
                 continue
             self._extracting = task, job
             job.state = "extracting"
@@ -375,6 +375,7 @@ class App(tk.Tk):
                         self.status.set(f"{len(job.entries)} 件" + (" / パスワードを入力してください。" if job.needs_password else " / 解凍できます。"))
                 else:
                     job.state = "password" if kind == "password" else "failed"
+                    job.summary.configure(text="パスワードが必要です" if kind == "password" else "内容を確認できません")
                     job.needs_password = kind == "password" or job.needs_password
                     job.message.configure(text=payload)
                     if self.selected is job:
@@ -392,7 +393,8 @@ class App(tk.Tk):
                 except Exception as error:
                     job.inspected = job.revision
                     job.state = "failed"
-                    job.message.configure(text=str(error))
+                    job.summary.configure(text="内容を確認できません")
+                    job.message.configure(text=error_message(error))
                     self._update_buttons()
 
     def open_result(self, job):
