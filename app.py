@@ -375,6 +375,7 @@ class App(tk.Tk):
                         self.status.set(f"{len(job.entries)} 件" + (" / パスワードを入力してください。" if job.needs_password else " / 解凍できます。"))
                 else:
                     job.state = "password" if kind == "password" else "failed"
+                    job.summary.configure(text="パスワードが必要です" if kind == "password" else "内容を確認できません")
                     job.needs_password = kind == "password" or job.needs_password
                     job.message.configure(text=payload)
                     if self.selected is job:
@@ -392,6 +393,7 @@ class App(tk.Tk):
                 except Exception as error:
                     job.inspected = job.revision
                     job.state = "failed"
+                    job.summary.configure(text="内容を確認できません")
                     job.message.configure(text=error_message(error))
                     self._update_buttons()
 

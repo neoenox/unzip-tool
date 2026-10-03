@@ -61,6 +61,7 @@ class UITests(unittest.TestCase):
         self.app.on_drop_files([str(broken), str(self.archive('good.zip'))])
         self.pump(lambda: all(j.state != 'scanning' for j in self.app.jobs))
         self.assertIn('壊れている', self.app.jobs[0].message.cget('text'))
+        self.assertEqual(self.app.jobs[0].summary.cget('text'), '内容を確認できません')
         self.app.start_extract()
         self.pump(lambda: not self.app.busy)
         self.assertEqual(self.app.jobs[1].state, 'done')
