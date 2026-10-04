@@ -139,7 +139,7 @@ def error_message(error: Exception) -> str:
     import rarfile
     if isinstance(error, (zipfile.BadZipFile, tarfile.ReadError, lzma.LZMAError,
                           py7zr.exceptions.Bad7zFile, py7zr.exceptions.CrcError,
-                          rarfile.BadRarFile)):
+                          rarfile.BadRarFile, rarfile.RarCRCError)):
         return '書庫が壊れているか、形式が正しくありません。ファイルを再取得してお試しください。'
     return str(error)
 

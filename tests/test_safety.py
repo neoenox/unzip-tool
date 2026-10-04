@@ -10,6 +10,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
+import rarfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from unzipper import PasswordRequiredError, clean_staging, default_dest_for, extract_archive, error_message
@@ -19,6 +20,7 @@ class SafetyTests(unittest.TestCase):
     def test_user_can_understand_storage_and_corruption_errors(self):
         self.assertIn('空き容量', error_message(OSError(errno.ENOSPC, 'No space left')))
         self.assertIn('壊れている', error_message(zipfile.BadZipFile('Bad CRC')))
+        self.assertIn('壊れている', error_message(rarfile.RarCRCError('CRC failed')))
         self.assertIn('アクセス', error_message(PermissionError(errno.EACCES, 'Permission denied')))
 
     def test_disk_full_after_partial_write_discards_output(self):
