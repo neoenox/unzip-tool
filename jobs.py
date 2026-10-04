@@ -9,7 +9,7 @@ from pathlib import Path
 
 from unzipper import (
     PasswordRequiredError, _extract_into, archive_needs_password,
-    clean_staging, list_contents, publish_staging,
+    clean_staging, error_message, list_contents, publish_staging,
 )
 
 
@@ -29,7 +29,7 @@ def _work(connection, operation, archive, password, staging):
     except PasswordRequiredError as error:
         connection.send(('password', str(error)))
     except Exception as error:
-        connection.send(('error', str(error)))
+        connection.send(('error', error_message(error)))
     finally:
         connection.close()
 
@@ -86,7 +86,7 @@ class BackgroundTask:
                     try:
                         payload = str(publish_staging(self.staging, self.dest))
                     except Exception as error:
-                        kind, payload = 'error', str(error)
+                        kind, payload = 'error', error_message(error)
                 self.finished = True
                 self.connection.close()
                 self._clean_staging()
