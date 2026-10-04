@@ -1,7 +1,7 @@
 ﻿param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [string]$ExecutablePath,
-    [string]$Version = '1.0.1'
+    [string]$Version = '1.1.0'
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot

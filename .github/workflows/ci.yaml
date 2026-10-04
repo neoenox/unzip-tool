@@ -25,14 +25,19 @@ jobs:
         run: python tests/run_all.py
       - name: Build executable
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+      - name: Verify RAR in distribution executable
+        run: |
+          $unrar = python -c "from unzipper import find_unrar_tool; print(find_unrar_tool() or '')"
+          if (-not $unrar) { throw "UnRAR is required for the distribution check." }
+          python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar $unrar
       - name: Build installer
-        run: ./scripts/build-installer.ps1 -Version 1.0.1
+        run: ./scripts/build-installer.ps1 -Version 1.1.0
       - name: Test installer
-        run: ./scripts/test-installer.ps1 -InstallerPath dist/KantanKaiko-Setup-1.0.1.exe -Version 1.0.1
+        run: ./scripts/test-installer.ps1 -InstallerPath dist/KantanKaiko-Setup-1.1.0.exe -Version 1.1.0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: KantanKaiko-windows
           path: |
             dist/KantanKaiko.exe
-            dist/KantanKaiko-Setup-1.0.1.exe
+            dist/KantanKaiko-Setup-1.1.0.exe

@@ -85,12 +85,22 @@ python tests/run_all.py
 - 日本語zipの文字化け対策あり (cp437 → cp932 再デコード)
 - 全形式で展開前に危険パス、Windows特殊名、名前の衝突を検査する。リンクや特殊ファイルを含む書庫はエラーとして拒否する。
 - 保存先と同じ親の一時フォルダで展開し、成功した結果だけ専用フォルダへ移す。失敗・キャンセル・通常終了時は一時ファイルを片付ける。
-- 7zの展開中は不定進捗を表示する。ZIP / TAR / RARの進捗は件数単位で、容量の割合ではない。
+- ZIP / TAR / RARの展開中は処理済み容量・割合・経過時間を表示する。7zは不定進捗と経過時間を表示する。
 - ZIPの暗号対応は標準ライブラリのZipCrypto。AES暗号ZIPは未対応。
 - アプリの強制終了や電源断では `.kantan-*` 一時フォルダが残ることがある。既存の解凍結果は変更しない。
 - UIの配置は `ui.py`、状態と順次処理は `app.py`、作業プロセスは `jobs.py`、解凍と検査は `unzipper.py`。
 
 修正計画は [docs/implementation-plan.md](docs/implementation-plan.md)。PRではWindows CIが全テストとexeビルドを実行する。
+
+### 更新の確認
+
+画面上部の「更新を確認」で公開済みの最新版を確認できる。新しい版がある場合は「新版を開く」で公式GitHub Releaseページを開く。起動時の通信や自動インストールは行わない。アプリのバージョンは `version.py` で管理し、リリースタグはその値と一致させる（現在は `v1.1.0`）。
+
+Windows CIではビルドしたexe自身の作業プロセスで、UnRARがない場合の案内と、UnRARがある場合のRAR3/5展開を検証する。UnRARはexeに同梱しない。
+
+```powershell
+python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar 'C:\Program Files\UnRAR\UnRAR.exe'
+```
 
 ### v1.0.1
 インストールするとZIP等の「プログラムから開く」に登録されます。選んだ書庫を一覧に追加します。既定のアプリは自動変更しません。v1.0.0をご利用の場合は新しいインストーラーを上書き実行してください。

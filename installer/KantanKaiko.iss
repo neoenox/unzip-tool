@@ -1,9 +1,9 @@
 ﻿; Build with scripts/build-installer.ps1. The application remains per-user.
 #ifndef AppVersion
-  #define AppVersion "1.0.1"
+  #define AppVersion "1.1.0"
 #endif
 #ifndef NumericVersion
-  #define NumericVersion "1.0.1"
+  #define NumericVersion "1.1.0"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\KantanKaiko.exe"
