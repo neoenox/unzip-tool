@@ -5,6 +5,7 @@ import multiprocessing as mp
 import os
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from unzipper import (
@@ -19,11 +20,19 @@ def _work(connection, operation, archive, password, staging):
             entries = list_contents(archive, password)
             connection.send(('done', (entries, archive_needs_password(archive))))
         else:
+            last_sent = 0
+            def byte_progress(done, total):
+                nonlocal last_sent
+                now = time.monotonic()
+                if now - last_sent >= .1 or done == total:
+                    connection.send(('bytes', (done, total)))
+                    last_sent = now
             _extract_into(
                 archive, Path(staging),
                 on_progress=lambda done, total: connection.send(('progress', (done, total))),
                 password=password,
                 on_file=lambda name: connection.send(('file', name)),
+                on_bytes=byte_progress,
             )
             connection.send(('done', None))
     except PasswordRequiredError as error:

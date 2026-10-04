@@ -4,6 +4,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 import sys
+import time
 import tkinter as tk
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +37,10 @@ class ArchiveJob:
     result: str = ""
     revision: int = 0
     inspected: int = -1
+    started: float = 0
+    byte_done: int = 0
+    byte_total: int = 0
+    elapsed: int = -1
     card: object = None
     summary: object = None
     message: object = None
@@ -283,6 +288,9 @@ class App(tk.Tk):
                 continue
             self._extracting = task, job
             job.state = "extracting"
+            job.started = time.monotonic()
+            job.byte_done = job.byte_total = 0
+            job.elapsed = -1
             job.message.configure(text="解凍中…")
             job.progress.configure(mode="indeterminate")
             job.progress.pack(fill="x", pady=(8, 0))
@@ -309,6 +317,7 @@ class App(tk.Tk):
             job.progress.stop()
             job.progress.pack_forget()
             job.state = "cancelled"
+            job.summary.configure(text="中止しました")
             job.message.configure(text="キャンセルしました。再試行できます。")
         self._extracting = None
         self._pending = []
@@ -328,27 +337,42 @@ class App(tk.Tk):
                     job.message.configure(text=f"解凍中: {payload}")
                 elif kind == "progress":
                     done, total = payload
-                    if total:
+                    if total and not job.byte_total:
                         job.progress.stop()
                         job.progress.configure(mode="determinate", maximum=total, value=done)
+                elif kind == "bytes":
+                    job.byte_done, job.byte_total = payload
+                    if job.byte_total:
+                        job.progress.stop()
+                        job.progress.configure(mode="determinate", maximum=job.byte_total, value=job.byte_done)
+                    job.elapsed = -1
                 else:
                     job.progress.stop()
                     job.progress.pack_forget()
                     job.inspected = job.revision
                     if kind == "done":
                         job.state = "done"
+                        job.summary.configure(text=f"解凍完了 · 経過 {int(time.monotonic() - job.started)} 秒")
                         job.result = payload
                         job.message.configure(text=f"完了: {payload}")
                         job.open_button.pack(anchor="w", pady=(8, 0))
                         job.password = ""
                     else:
                         job.state = "password" if kind == "password" else "failed"
+                        job.summary.configure(text="パスワードが必要です" if kind == "password" else "解凍できません")
                         job.needs_password = kind == "password" or job.needs_password
                         job.message.configure(text=f"{'入力して再試行してください' if kind == 'password' else '解凍に失敗しました'}: {payload}")
                     self.select_job(job)
                     self._extracting = None
                     self._start_next()
                     break
+            if self._extracting and self._extracting[1] is job:
+                elapsed = int(time.monotonic() - job.started)
+                if elapsed != job.elapsed:
+                    job.elapsed = elapsed
+                    percent = min(99, int(job.byte_done * 100 / job.byte_total)) if job.byte_total else 0
+                    size = f"{readable_size(job.byte_done)} / {readable_size(job.byte_total)} ({percent}%) · " if job.byte_total else "処理中 · "
+                    job.summary.configure(text=f"{size}経過 {elapsed} 秒")
         if not self.busy:
             self._poll_listing()
         self._poll_id = self.after(50, self._poll_events)

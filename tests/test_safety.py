@@ -55,6 +55,14 @@ class SafetyTests(unittest.TestCase):
         self.assertNotEqual(result, dest)
         self.assertEqual((result / 'a.txt').read_text(), 'new')
 
+    def test_byte_progress_advances_inside_large_file(self):
+        src = self.archive([('a.bin', b'x' * (3 * 1024 * 1024)), ('b', b'abc')])
+        seen = []
+        extract_archive(src, self.base / 'out', on_bytes=lambda done, total: seen.append((done, total)))
+        self.assertTrue(any(0 < done < total for done, total in seen))
+        self.assertEqual(seen[-1], (3 * 1024 * 1024 + 3,) * 2)
+        self.assertEqual([done for done, _ in seen], sorted(done for done, _ in seen))
+
     def test_unsafe_names_leave_no_output(self):
         for name in ('../escape', '/absolute', 'C:/escape', 'CON.txt',
                      'file:stream', 'trailing. ', 'sub/../escape'):
