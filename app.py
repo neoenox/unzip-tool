@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import sys
 import time
+import webbrowser
 import tkinter as tk
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,7 @@ from dnd import disable_drop, enable_drop, take_dropped_files
 from jobs import BackgroundTask
 from ui import build_widgets
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
+from version import VERSION
 
 TITLE = "かんたん解凍"
 FILTERS = [
@@ -70,6 +72,8 @@ class App(tk.Tk):
         self._closed = False
         self._listing = None
         self._extracting = None
+        self._updating = None
+        self._update_url = None
         self._pending = []
         self._password_after = None
         self._custom_parent = None
@@ -328,6 +332,7 @@ class App(tk.Tk):
     def _poll_events(self):
         if self._closed:
             return
+        self._poll_update()
         for paths in take_dropped_files(self):
             self.on_drop_files(paths)
         if self._extracting:
@@ -376,6 +381,37 @@ class App(tk.Tk):
         if not self.busy:
             self._poll_listing()
         self._poll_id = self.after(50, self._poll_events)
+
+    def check_updates(self):
+        if self._updating:
+            return
+        if self._update_url:
+            webbrowser.open(self._update_url)
+            return
+        try:
+            self._updating = BackgroundTask('update', '')
+            self.update_btn.configure(text='確認中…', state='disabled')
+        except Exception:
+            self.update_text.set('更新を確認できませんでした。もう一度お試しください。')
+
+    def _poll_update(self):
+        if not self._updating:
+            return
+        for kind, payload in self._updating.poll():
+            if kind not in ('done', 'error'):
+                continue
+            self._updating = None
+            self.update_btn.configure(text='更新を確認', state='normal')
+            if kind == 'done':
+                if payload['newer']:
+                    self._update_url = payload['url']
+                    self.update_btn.configure(text='新版を開く')
+                    self.update_text.set(f"新版 v{payload['version']} があります")
+                else:
+                    self.update_text.set(f"最新公開版 v{payload['version']} · このアプリ v{VERSION}")
+            else:
+                self.update_text.set('更新を確認できません。接続を確認して再試行してください。')
+            break
 
     def _poll_listing(self):
         if self._listing:
@@ -464,6 +500,8 @@ class App(tk.Tk):
             self._listing[0].cancel()
         if self._extracting:
             self._extracting[0].cancel()
+        if self._updating:
+            self._updating.cancel()
         disable_drop(self)
         self.destroy()
 

@@ -1,6 +1,7 @@
 """Tk layout and styling; all behavior is supplied by the application."""
 import tkinter as tk
 from tkinter import ttk
+from version import VERSION
 
 
 def build_widgets(view):
@@ -26,7 +27,10 @@ def build_widgets(view):
     ttk.Label(header, text=view.title(), style="Title.TLabel").pack(side="left")
     view.clear_btn = ttk.Button(header, text="一覧をクリア", command=view.clear_jobs)
     view.clear_btn.pack(side="right")
-    ttk.Label(body, text="ZIP・7z・RAR・TAR  /  複数ファイルをまとめて解凍", style="Muted.TLabel").pack(anchor="w", pady=(4, 16))
+    view.update_btn = ttk.Button(header, text='更新を確認', command=view.check_updates)
+    view.update_btn.pack(side='right', padx=(0, 8))
+    view.update_text = tk.StringVar(value=f'ZIP・7z・RAR・TAR  /  v{VERSION}')
+    ttk.Label(body, textvariable=view.update_text, style='Muted.TLabel').pack(anchor='w', pady=(4, 16))
     view.drop_area = tk.Frame(body, bg="white", highlightbackground="#b7c8dd", highlightthickness=1, pady=16)
     view.drop_area.pack(fill="x")
     view.drop_title = tk.Label(view.drop_area, text="ここにファイルをドロップ", bg="white", fg="#243447", font=("Yu Gothic UI", 14, "bold"))

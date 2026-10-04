@@ -16,7 +16,10 @@ from unzipper import (
 
 def _work(connection, operation, archive, password, staging):
     try:
-        if operation == 'list':
+        if operation == 'update':
+            from updates import check_latest
+            connection.send(('done', check_latest()))
+        elif operation == 'list':
             entries = list_contents(archive, password)
             connection.send(('done', (entries, archive_needs_password(archive))))
         else:
