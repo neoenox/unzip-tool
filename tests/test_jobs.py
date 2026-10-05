@@ -1,11 +1,15 @@
+import subprocess
 import sys
 import tempfile
+import types
 import time
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import jobs
 from jobs import BackgroundTask
 
 
@@ -98,6 +102,20 @@ class JobTests(unittest.TestCase):
         task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
         self.assertTrue(task.process.is_alive())
         task.cancel()
+        self.assertFalse(task.process.is_alive())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+        self.assertFalse((self.base / 'out').exists())
+
+    def test_taskkill_timeout_still_stops_process_and_cleans_staging(self):
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
+        self.assertTrue(task.process.is_alive())
+        timeout = subprocess.TimeoutExpired(['taskkill'], 10)
+        with mock.patch.object(jobs, 'os', types.SimpleNamespace(name='nt')), \
+                mock.patch.object(jobs.subprocess, 'CREATE_NO_WINDOW', 0, create=True), \
+                mock.patch.object(jobs.subprocess, 'run', side_effect=timeout) as run:
+            task.cancel()
+        run.assert_called_once()
+        self.assertTrue(task.finished)
         self.assertFalse(task.process.is_alive())
         self.assertFalse(list(self.base.glob('.kantan-*')))
         self.assertFalse((self.base / 'out').exists())
