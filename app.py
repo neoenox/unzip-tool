@@ -436,10 +436,12 @@ class App(tk.Tk):
             self.after_cancel(self._poll_id)
         if self._password_after:
             self.after_cancel(self._password_after)
-        if self._listing:
-            self._listing[0].cancel()
-        if self._extracting:
-            self._extracting[0].cancel()
+        for running in (self._listing, self._extracting):
+            if running:
+                try:
+                    running[0].cancel()
+                except Exception:
+                    pass  # closing the window must not depend on worker cleanup
         disable_drop(self)
         self.destroy()
 
