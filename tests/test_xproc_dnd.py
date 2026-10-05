@@ -68,6 +68,9 @@ def test_cross_process_robustness() -> None:
 
 
 def main() -> int:
+    if sys.platform != "win32":
+        print("SKIP test_cross_process_robustness (Windows only)")
+        return 0
     test_cross_process_robustness()
     print("ALL XPROC PASSED")
     return 0
