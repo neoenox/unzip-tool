@@ -1,11 +1,15 @@
 import sys
 import tempfile
+import subprocess
 import time
+import types
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import jobs
 from jobs import BackgroundTask
 
 
@@ -101,6 +105,34 @@ class JobTests(unittest.TestCase):
         self.assertFalse(task.process.is_alive())
         self.assertFalse(list(self.base.glob('.kantan-*')))
         self.assertFalse((self.base / 'out').exists())
+
+    def test_cancel_cleans_up_when_taskkill_times_out(self):
+        self.large_archive()
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'large')
+        self.addCleanup(task.cancel)
+        self.assertTrue(task.process.is_alive())
+        timeout = subprocess.TimeoutExpired(['taskkill'], 10)
+        with mock.patch.object(jobs, 'os', types.SimpleNamespace(name='nt')), \
+                mock.patch.object(jobs.subprocess, 'CREATE_NO_WINDOW', 0x08000000, create=True), \
+                mock.patch.object(jobs.subprocess, 'run', side_effect=timeout) as run:
+            task.cancel()
+        run.assert_called_once()
+        self.assertTrue(task.finished)
+        self.assertFalse(task.process.is_alive())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+        self.assertFalse((self.base / 'large').exists())
+        self.assertEqual(task.poll(), [])
+
+    def test_cancel_cleans_up_even_if_stopping_raises(self):
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
+        process = task.process
+        self.addCleanup(lambda: (process.kill(), process.join(5)))
+        with mock.patch.object(task, '_stop_process', side_effect=RuntimeError('boom')):
+            with self.assertRaises(RuntimeError):
+                task.cancel()
+        self.assertTrue(task.finished)
+        self.assertTrue(task.connection.closed)
+        self.assertFalse(list(self.base.glob('.kantan-*')))
 
     def test_unexpected_worker_exit_reports_error(self):
         task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
