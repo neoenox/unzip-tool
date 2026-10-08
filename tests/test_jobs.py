@@ -134,6 +134,28 @@ class JobTests(unittest.TestCase):
         self.assertTrue(task.connection.closed)
         self.assertFalse(list(self.base.glob('.kantan-*')))
 
+    def test_windows_taskkill_missing_falls_back_to_terminate(self):
+        task = BackgroundTask.__new__(BackgroundTask)
+        task.process = mock.Mock()
+        task.process.pid = 12345
+        task.process.is_alive.side_effect = [True, False]
+        with mock.patch.object(jobs, 'os', types.SimpleNamespace(name='nt')), \
+                mock.patch.object(jobs.subprocess, 'CREATE_NO_WINDOW', 0x08000000, create=True), \
+                mock.patch.object(jobs.subprocess, 'run', side_effect=OSError('not installed')):
+            task._stop_process()
+        task.process.terminate.assert_called_once()
+        task.process.join.assert_called_once_with(5)
+        task.process.kill.assert_not_called()
+
+    def test_cancel_twice_does_not_repeat_cleanup(self):
+        task = BackgroundTask('list', self.archive)
+        self.addCleanup(task.cancel)
+        task.cancel()
+        assert task.finished
+        assert task.connection.closed
+        task.cancel()  # no second close/terminate for a completed task
+        assert task.finished
+
     def test_unexpected_worker_exit_reports_error(self):
         task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
         task.process.terminate()
