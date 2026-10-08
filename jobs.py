@@ -110,20 +110,31 @@ class BackgroundTask:
     def cancel(self):
         if self.finished:
             return
+        self.finished = True
+        try:
+            self._stop_process()
+        finally:
+            # Always release the pipe and the staging folder, even if stopping failed.
+            self.connection.close()
+            self._clean_staging()
+
+    def _stop_process(self):
+        if not self.process.is_alive():
+            return
         # UnRAR can own a subprocess; stop this task's entire process tree.
-        if self.process.is_alive():
-            if os.name == 'nt':
+        if os.name == 'nt':
+            try:
                 subprocess.run(
                     ['taskkill', '/PID', str(self.process.pid), '/T', '/F'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     creationflags=subprocess.CREATE_NO_WINDOW, timeout=10,
                 )
-            else:
+            except (OSError, subprocess.SubprocessError):
+                # taskkill hung or is unavailable; at least stop the worker itself.
                 self.process.terminate()
+        else:
+            self.process.terminate()
+        self.process.join(5)
+        if self.process.is_alive():
+            self.process.kill()
             self.process.join(5)
-            if self.process.is_alive():
-                self.process.kill()
-                self.process.join(5)
-        self.finished = True
-        self.connection.close()
-        self._clean_staging()

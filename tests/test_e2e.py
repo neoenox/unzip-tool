@@ -116,7 +116,8 @@ def test_gui_extract_e2e() -> None:
     app.withdraw()
     orig = mute_dialogs()
     try:
-        assert app._dnd_enabled, "DnD hook not enabled"
+        if sys.platform == "win32":
+            assert app._dnd_enabled, "DnD hook not enabled"
         app.archive_var.set(str(zpath))
         assert pump(app, lambda: "2 件" in app.status.get()), f"list failed: {app.status.get()}"
         app.dest_var.set(str(dest))
@@ -150,7 +151,10 @@ def test_os_level_drop_e2e() -> None:
 
 def main() -> int:
     test_gui_extract_e2e()
-    test_os_level_drop_e2e()
+    if sys.platform == "win32":
+        test_os_level_drop_e2e()
+    else:
+        print("SKIP test_os_level_drop_e2e (Windows only)")
     print("ALL E2E PASSED")
     return 0
 

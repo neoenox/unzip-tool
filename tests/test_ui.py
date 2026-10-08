@@ -167,7 +167,7 @@ class UITests(unittest.TestCase):
         self.app.start_extract()
         self.pump(lambda: self.app.jobs[0].state == 'done')
         job = self.app.jobs[0]
-        with patch('app.os.startfile') as open_folder:
+        with patch('app.os.startfile', create=True) as open_folder:
             self.app.open_result(job)
             open_folder.assert_called_once_with(job.result)
         self.assertEqual(Path(job.result).name, 'one (2)')
