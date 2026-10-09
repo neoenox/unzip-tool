@@ -248,7 +248,7 @@ class UITests(unittest.TestCase):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')
         self.assertEqual(labels[2].cget('foreground'), '#1d4ed8')
-        self.assertEqual(labels[0].cget('foreground'), '#94a3b8')
+        self.assertEqual(labels[0].cget('foreground'), '#526276')
 
     def test_per_card_dest_change(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
@@ -315,6 +315,111 @@ class UITests(unittest.TestCase):
         self.pump(lambda: self.app.jobs[0].state == 'failed')
         self.app.update()
         self.assertFalse(self.app.jobs[0].action_btn.winfo_manager())
+
+    def test_status_icons(self):
+        self.app._set_status("解凍中: x", "⏳")
+        self.assertTrue(self.app.status.get().startswith("⏳"))
+        self.app._set_status("完了: 1 件")
+        self.assertEqual(self.app.status.get(), "完了: 1 件")
+
+    def test_scanning_spinner_shows_and_hides(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        job = self.app.jobs[0]
+        self.app._show_scanning(job)
+        self.app.update()
+        self.assertTrue(job.progress.winfo_manager())
+        self.app._hide_scanning(job)
+        self.app.update()
+        self.assertFalse(job.progress.winfo_manager())
+
+    def test_wrong_password_highlights_entry(self):
+        src = self.base / 'secret3.7z'
+        with py7zr.SevenZipFile(src, 'w', password='secret') as z:
+            z.writestr('hello', 'hello.txt')
+        self.app.on_drop_files([str(src)])
+        job = self.app.jobs[0]
+        self.pump(lambda: job.pw_frame.winfo_manager())
+        job.pw_var.set('wrong')
+        self.app.start_extract()
+        self.pump(lambda: not self.app.busy and job.state == 'password')
+        self.assertEqual(str(job.pw_entry.cget('foreground')), '#b91c1c')
+        job.pw_var.set('sec')
+        self.app.update()
+        self.assertEqual(str(job.pw_entry.cget('foreground')), '#243447')
+
+    def test_retry_clears_stale_message(self):
+        broken = self.base / 'broken.zip'
+        broken.write_bytes(b'not a zip')
+        self.app.on_drop_files([str(broken)])
+        self.pump(lambda: self.app.jobs[0].state == 'failed')
+        job = self.app.jobs[0]
+        job.retry_btn.invoke()
+        self.assertEqual(job.message.cget('text'), '解凍中…')
+
+    def test_overall_bar_during_scanning(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        job.state = 'scanning'
+        self.app._sync_overall()
+        self.app.update()
+        self.assertTrue(self.app.overall_frame.winfo_manager())
+        self.assertEqual(self.app.overall_label.cget('text'), '確認中…')
+
+    def test_keyboard_navigation_and_delete(self):
+        # withdrawn窓への合成Keyは配送されないためハンドラを直接呼ぶ
+        from types import SimpleNamespace
+        self.assertIn('_on_key', self.app.bind_all('<Key>'))
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
+        first, second = self.app.jobs
+        self.assertIs(self.app.selected, second)
+
+        def key(sym, state=0, widget=None):
+            self.app._on_key(SimpleNamespace(widget=widget or self.app, keysym=sym, state=state))
+
+        key('Up')
+        self.assertIs(self.app.selected, first)
+        key('Down')
+        self.assertIs(self.app.selected, second)
+        key('Delete')
+        self.assertEqual(len(self.app.jobs), 1)
+        self.assertIs(self.app.jobs[0], first)
+        # 入力欄フォーカス中は発火しない
+        key('Delete', widget=first.pw_entry)
+        self.assertEqual(len(self.app.jobs), 1)
+
+    def test_keyboard_return_starts_extract(self):
+        from types import SimpleNamespace
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        self.app._on_key(SimpleNamespace(widget=self.app, keysym='Return', state=0))
+        self.pump(lambda: self.app.jobs[0].state == 'done')
+
+    def test_mixed_steps_indicator(self):
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
+        first, second = self.app.jobs
+        first.state = 'scanning'
+        self.app._sync_steps()
+        self.app.update()
+        labels = self.app.step_labels
+        self.assertEqual(labels[1].cget('text'), '② 一部確認中…')
+        first.state = 'ready'
+        self.app._sync_steps()
+        self.app.update()
+        self.assertEqual(labels[1].cget('text'), '② 内容を確認')
+
+    def test_cancel_resets_progress_state(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        self.app.start_extract()
+        self.app.cancel_extract()
+        self.assertEqual(job.byte_done, 0)
+        self.assertEqual(job.byte_total, 0)
+        self.assertEqual(job.started, 0)
+        self.assertEqual(job.last_file, "")
 
     def test_minimum_window_keeps_actions_visible_with_details_and_password(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])

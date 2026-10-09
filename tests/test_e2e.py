@@ -122,7 +122,7 @@ def test_gui_extract_e2e() -> None:
         assert pump(app, lambda: "2 件" in app.status.get()), f"list failed: {app.status.get()}"
         app.dest_var.set(str(dest))
         app.start_extract()
-        ok = pump(app, lambda: app.status.get().startswith("完了"))
+        ok = pump(app, lambda: "完了" in app.status.get())
         assert ok, f"extract did not finish: {app.status.get()}"
         assert (dest / "hello.txt").read_text(encoding="utf-8") == "hello e2e"
         assert (dest / "日本語.txt").read_text(encoding="utf-8") == "mojibake e2e"

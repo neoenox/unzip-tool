@@ -124,7 +124,45 @@ class App(tk.Tk):
             self.dnd_hint.configure(text="「ファイルを選ぶ」から追加できます")
         self._poll_id = self.after(50, self._poll_events)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind_all("<Key>", self._on_key, add="+")
         self._empty_layout()
+
+    def _on_key(self, event):
+        """カード操作のキーボード対応 (#44)。入力欄・ダイアログ内では発火させない。"""
+        try:
+            widget = event.widget
+            if widget.winfo_toplevel() is not self:
+                return
+        except Exception:
+            return
+        if isinstance(widget, (tk.Entry, ttk.Entry, tk.Text, ttk.Treeview,
+                               tk.Button, ttk.Button, tk.Listbox, ttk.Combobox)):
+            return
+        keysym = event.keysym
+        if keysym == "Delete":
+            if self.selected and not self.busy:
+                self.remove_job(self.selected)
+        elif keysym == "Return":
+            if not self.busy:
+                self.start_extract()
+        elif keysym == "Up":
+            self._move_selection(-1)
+        elif keysym == "Down":
+            self._move_selection(1)
+        elif keysym.lower() == "o" and (event.state & 0x4):
+            if not self.busy:
+                self.choose_archive()
+
+    def _move_selection(self, delta: int) -> None:
+        if not self.jobs:
+            return
+        try:
+            idx = self.jobs.index(self.selected)
+        except ValueError:
+            idx = 0 if delta > 0 else -1
+            self.select_job(self.jobs[idx])
+            return
+        self.select_job(self.jobs[(idx + delta) % len(self.jobs)])
 
     def _new_card(self, job):
         job.card = ttk.Frame(self.card_list, style="Card.TFrame", padding=12)
@@ -279,6 +317,7 @@ class App(tk.Tk):
     def retry_job(self, job):
         if self.busy or job not in self.jobs:
             return
+        job.message.configure(text="再試行しています…")
         if job.needs_password and not job.password:
             job.state = "password"
             job.message.configure(text="パスワードを入力して再試行してください。")
@@ -329,14 +368,37 @@ class App(tk.Tk):
             self.selected.dest_customized = True
             self._sync_card_chrome(self.selected)
 
+    def _show_scanning(self, job):
+        """一覧取得中のスピナー表示 (#37)。"""
+        try:
+            job.progress.configure(mode="indeterminate")
+            if not job.progress.winfo_manager():
+                job.progress.pack(fill="x", pady=(8, 0))
+            job.progress.start(15)
+        except Exception:
+            pass
+
+    def _hide_scanning(self, job):
+        try:
+            if job.state != "extracting":
+                job.progress.stop()
+                job.progress.pack_forget()
+        except Exception:
+            pass
+
     def _on_card_password(self, job):
         if self.busy or job.state == "done":
             return
+        try:
+            job.pw_entry.configure(foreground="#243447")
+        except Exception:
+            pass
         job.password = job.pw_var.get()
         job.revision += 1
         if self._password_after:
             self.after_cancel(self._password_after)
         self._password_after = self.after(350, self._request_inspection)
+        job.message.configure(text="パスワードを確認しています…")
 
     def _sync_card_pw_row(self, job):
         if job.needs_password and job.state != "done":
@@ -469,30 +531,49 @@ class App(tk.Tk):
         self._sync_steps()
 
     def _sync_steps(self):
-        """手順表示 (①追加→②確認→③解凍) の現在位置を常設ハイライトする。"""
+        """手順表示。混合状態では②を「一部確認中…」にする (#45)。"""
+        states = {j.state for j in self.jobs}
+        label2 = "② 内容を確認"
         if not self.jobs:
             active = 0
-        elif any(j.state == "scanning" for j in self.jobs) or self._listing:
+        elif self.busy or "extracting" in states:
+            active = 2
+        elif "scanning" in states or self._listing:
             active = 1
+            if states - {"scanning"}:
+                label2 = "② 一部確認中…"
         else:
             active = 2
         try:
             for i, lbl in enumerate(self.step_labels):
-                lbl.configure(foreground="#1d4ed8" if i == active else "#94a3b8")
+                lbl.configure(foreground="#1d4ed8" if i == active else "#526276")
+            self.step_labels[1].configure(text=label2)
         except Exception:
             pass
 
     def _sync_overall(self):
-        """フッターの全体バー (○/○件)。解凍中だけ表示する。"""
+        """フッターの全体バー。解凍中は件数表示、確認中は不定表示 (#40)。"""
         try:
+            scanning = any(j.state == "scanning" for j in self.jobs)
             if self.busy and self._extract_total:
                 done = sum(1 for j in self.jobs if j.state == "done")
                 if not self.overall_frame.winfo_manager():
-                    self.overall_frame.pack(side="left")
-                self.overall_bar.configure(maximum=self._extract_total, value=done)
+                    self.overall_frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
+                self.overall_bar.stop()
+                self.overall_bar.configure(mode="determinate", maximum=self._extract_total, value=done)
                 self.overall_label.configure(text=f"全体 {done}/{self._extract_total}")
+            elif self.busy or scanning:
+                if not self.overall_frame.winfo_manager():
+                    self.overall_frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
+                self.overall_bar.configure(mode="indeterminate")
+                self.overall_bar.start(10)
+                self.overall_label.configure(text="確認中…" if scanning and not self.busy else "準備中…")
             elif self.overall_frame.winfo_manager():
                 self.overall_frame.pack_forget()
+                try:
+                    self.overall_bar.stop()
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -522,6 +603,10 @@ class App(tk.Tk):
             user32.FlashWindowEx(ctypes.byref(info))
         except Exception:
             pass
+
+    def _set_status(self, text: str, icon: str = "") -> None:
+        """ステータス欄に短い要点＋状態アイコン (#36)。"""
+        self.status.set(f"{icon} {text}" if icon else text)
 
     def start_extract(self):
         if self.busy:
@@ -592,19 +677,20 @@ class App(tk.Tk):
             job.progress.start(15)
             self.select_job(job)
             current = self._extract_total - len(self._pending)
-            self.status.set(f"解凍中 ({current}/{self._extract_total}): {job.archive.name}")
+            self._set_status(f"解凍中 ({current}/{self._extract_total}): {job.archive.name}", "⏳")
             return
         self.busy = False
         self._extracting = None
         self._update_buttons()
         done = sum(j.state == "done" for j in self.jobs)
         remaining = len(self.jobs) - done
-        self.status.set(f"完了: {done} 件" + (f" / 未完了 {remaining} 件。書庫のメッセージを確認してください。" if remaining else "。フォルダを開いて確認できます。"))
+        self._set_status(f"完了: {done} 件" + (f" / 未完了 {remaining} 件。書庫のメッセージを確認してください。" if remaining else "。フォルダを開いて確認できます。"),
+                         "⚠️" if remaining else "✅")
         self._notify_done(done)
         password_job = next((j for j in self.jobs if j.state == "password"), None)
         if password_job:
             self.select_job(password_job)
-            self.status.set(f"パスワードを入力して再試行してください。完了: {done} 件 / 未完了: {remaining} 件")
+            self._set_status(f"パスワードを入力して再試行してください。完了: {done} 件 / 未完了: {remaining} 件", "⚠️")
             self._sync_card_pw_row(password_job)
             try:
                 if password_job.pw_frame.winfo_manager():
@@ -619,6 +705,10 @@ class App(tk.Tk):
             job.progress.stop()
             job.progress.pack_forget()
             job.state = "cancelled"
+            job.byte_done = job.byte_total = 0
+            job.elapsed = -1
+            job.started = 0
+            job.last_file = ""
             job.summary.configure(text="中止しました")
             job.message.configure(text="キャンセルしました。再試行できます。")
         self._extracting = None
@@ -672,6 +762,11 @@ class App(tk.Tk):
                         job.summary.configure(text="パスワードが必要です" if kind == "password" else "解凍できません")
                         job.needs_password = kind == "password" or job.needs_password
                         job.message.configure(text=f"{'入力して再試行してください' if kind == 'password' else '解凍に失敗しました'}: {payload}")
+                        if kind == "password" and job.password:
+                            try:
+                                job.pw_entry.configure(foreground="#b91c1c")
+                            except Exception:
+                                pass
                     self._sync_card_chrome(job)
                     self._sync_overall()
                     self.select_job(job)
@@ -730,6 +825,7 @@ class App(tk.Tk):
                 if revision != job.revision or job.state == "done":
                     break
                 job.inspected = revision
+                self._hide_scanning(job)
                 if kind == "done":
                     job.entries, job.needs_password = payload
                     job.state = "password" if job.needs_password and not job.password else "ready"
@@ -738,6 +834,12 @@ class App(tk.Tk):
                     extra = " / 内容は先頭2000件のみ表示" if len(job.entries) > 2000 else ""
                     job.summary.configure(text=f"{count:,} ファイル · 展開後 {readable_size(size)}{extra}")
                     job.message.configure(text="パスワードを入力してください。" if job.state == "password" else "解凍できます")
+                    if job.state == "password" and job.password:
+                        # 入力済みでまだPW要求＝誤り。赤字で知らせる (#38)
+                        try:
+                            job.pw_entry.configure(foreground="#b91c1c")
+                        except Exception:
+                            pass
                     self._sync_card_pw_row(job)
                     if job.details_wrap.winfo_manager():
                         self._render_card_tree(job)
@@ -761,6 +863,7 @@ class App(tk.Tk):
                 try:
                     task = BackgroundTask("list", job.archive, job.password.encode("utf-8") if job.password else None)
                     self._listing = task, job, job.revision
+                    self._show_scanning(job)
                 except Exception as error:
                     job.inspected = job.revision
                     job.state = "failed"
@@ -802,6 +905,15 @@ class App(tk.Tk):
             self.after_cancel(self._poll_id)
         if self._password_after:
             self.after_cancel(self._password_after)
+        for job in self.jobs:
+            try:
+                job.progress.stop()
+            except Exception:
+                pass
+        try:
+            self.overall_bar.stop()
+        except Exception:
+            pass
         for running in (self._listing, self._extracting):
             if running:
                 try:
