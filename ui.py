@@ -30,7 +30,18 @@ def build_widgets(view):
     view.update_btn = ttk.Button(header, text='更新を確認', command=view.check_updates)
     view.update_btn.pack(side='right', padx=(0, 8))
     view.update_text = tk.StringVar(value=f'ZIP・7z・RAR・TAR  /  v{VERSION}')
-    ttk.Label(body, textvariable=view.update_text, style='Muted.TLabel').pack(anchor='w', pady=(4, 16))
+    ttk.Label(body, textvariable=view.update_text, style='Muted.TLabel').pack(anchor='w', pady=(4, 8))
+    view.steps_frame = ttk.Frame(body)
+    view.steps_frame.pack(fill="x", pady=(0, 8))
+    view.step_labels = []
+    for i, text in enumerate(("① 書庫を追加", "② 内容を確認", "③ 解凍する")):
+        lbl = tk.Label(view.steps_frame, text=text, bg="#f4f6f8", fg="#94a3b8",
+                       font=("Yu Gothic UI", 10, "bold"))
+        lbl.pack(side="left")
+        view.step_labels.append(lbl)
+        if i < 2:
+            tk.Label(view.steps_frame, text="  →  ", bg="#f4f6f8", fg="#94a3b8",
+                     font=("Yu Gothic UI", 10)).pack(side="left")
     view.drop_area = tk.Frame(body, bg="white", highlightbackground="#b7c8dd", highlightthickness=1, pady=16)
     view.drop_area.pack(fill="x")
     view.drop_title = tk.Label(view.drop_area, text="ここにファイルをドロップ", bg="white", fg="#243447", font=("Yu Gothic UI", 14, "bold"))
