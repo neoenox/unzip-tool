@@ -276,6 +276,46 @@ class UITests(unittest.TestCase):
         self.app.dest_var.set(str(other / 'manual'))
         self.assertTrue(second.dest_customized)
 
+    def test_diskfull_action_changes_dest_and_retries(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        job.state = 'failed'
+        job.message.configure(text='解凍に失敗しました: 保存先の空き容量が不足しています。')
+        self.app._update_buttons()
+        self.app.update()
+        self.assertTrue(job.action_btn.winfo_manager())
+        self.assertEqual(job.action_btn.cget('text'), '保存先を変更して再試行')
+        target = self.base / 'roomy'
+        target.mkdir()
+        with patch('app.filedialog.askdirectory', return_value=str(target)):
+            job.action_btn.invoke()
+        self.pump(lambda: job.state == 'done')
+        self.assertEqual(job.dest.parent, target)
+        self.assertTrue(job.dest_customized)
+
+    def test_password_action_selects_and_shows_entry(self):
+        src = self.base / 'secret2.7z'
+        with py7zr.SevenZipFile(src, 'w', password='secret') as z:
+            z.writestr('hello', 'hello.txt')
+        self.app.on_drop_files([str(src)])
+        job = self.app.jobs[0]
+        self.pump(lambda: job.pw_frame.winfo_manager())
+        self.assertTrue(job.action_btn.winfo_manager())
+        self.assertEqual(job.action_btn.cget('text'), 'パスワードを入力')
+        job.action_btn.invoke()
+        self.app.update()
+        self.assertIs(self.app.selected, job)
+        self.assertTrue(job.pw_frame.winfo_manager())
+
+    def test_corrupt_failure_has_no_action_button(self):
+        broken = self.base / 'broken.zip'
+        broken.write_bytes(b'not a zip')
+        self.app.on_drop_files([str(broken)])
+        self.pump(lambda: self.app.jobs[0].state == 'failed')
+        self.app.update()
+        self.assertFalse(self.app.jobs[0].action_btn.winfo_manager())
+
     def test_minimum_window_keeps_actions_visible_with_details_and_password(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')
