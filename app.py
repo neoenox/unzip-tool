@@ -398,6 +398,21 @@ class App(tk.Tk):
         for job in self.jobs:
             self._sync_card_chrome(job)
         self._sync_overall()
+        self._sync_steps()
+
+    def _sync_steps(self):
+        """手順表示 (①追加→②確認→③解凍) の現在位置を常設ハイライトする。"""
+        if not self.jobs:
+            active = 0
+        elif any(j.state == "scanning" for j in self.jobs) or self._listing:
+            active = 1
+        else:
+            active = 2
+        try:
+            for i, lbl in enumerate(self.step_labels):
+                lbl.configure(foreground="#1d4ed8" if i == active else "#94a3b8")
+        except Exception:
+            pass
 
     def _sync_overall(self):
         """フッターの全体バー (○/○件)。解凍中だけ表示する。"""

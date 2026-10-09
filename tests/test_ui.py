@@ -241,6 +241,15 @@ class UITests(unittest.TestCase):
         self.app.update()
         self.assertFalse(self.app.overall_frame.winfo_manager())
 
+    def test_steps_indicator_tracks_progress(self):
+        labels = self.app.step_labels
+        self.assertEqual(len(labels), 3)
+        self.assertEqual(labels[0].cget('foreground'), '#1d4ed8')
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        self.assertEqual(labels[2].cget('foreground'), '#1d4ed8')
+        self.assertEqual(labels[0].cget('foreground'), '#94a3b8')
+
     def test_minimum_window_keeps_actions_visible_with_details_and_password(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')
