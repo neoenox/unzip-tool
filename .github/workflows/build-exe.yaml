@@ -28,10 +28,16 @@ jobs:
         run: pip install -r requirements.txt -r requirements-build.txt
       - name: Install unrar (for tests)
         run: choco install unrar -y
+      - name: Fetch UnRAR for bundling
+        run: python scripts/fetch_unrar.py --dest tools/UnRAR.exe
       - name: Test
         run: python tests/run_all.py
       - name: Build exe
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+        shell: pwsh
+        run: |
+          $addBin = @()
+          if (Test-Path tools/UnRAR.exe) { $addBin = @('--add-binary', 'tools/UnRAR.exe;tools') }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko @addBin app.py
       - name: Verify release executable
         shell: pwsh
         run: |
@@ -57,4 +63,5 @@ jobs:
           files: |
             dist/KantanKaiko.exe
             dist/KantanKaiko-Setup-*.exe
+            tools/UnRAR.exe
           fail_on_unmatched_files: true

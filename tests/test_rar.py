@@ -39,7 +39,7 @@ def test_rar3_rar5() -> None:
         seen = []
         extract_archive(src, dest, on_progress=lambda d, t: seen.append((d, t)))
         assert (dest / "testfile.txt").read_text() == "Testing 123\n"
-        assert seen[-1] == (1, 1), seen
+        assert seen[-1] == (12, 12), seen
 
 
 def test_rar_no_tool_message() -> None:

@@ -47,13 +47,27 @@ class UITests(unittest.TestCase):
         return src
 
     def test_empty_and_collapsed_details(self):
-        self.assertFalse(self.app._pw_visible)
-        self.assertFalse(self.app.details.winfo_manager())
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')
-        self.app.toggle_details()
-        self.assertEqual(self.app.details.winfo_manager(), 'pack')
-        self.assertEqual(self.app.tree.item(self.app.tree.get_children()[0])['text'], 'folder')
+        job = self.app.jobs[0]
+        self.assertFalse(job.pw_frame.winfo_manager())
+        self.assertFalse(job.details_wrap.winfo_manager())
+        job.details_btn.invoke()
+        self.app.update()
+        self.assertEqual(job.details_wrap.winfo_manager(), 'pack')
+        self.assertEqual(job.tree.item(job.tree.get_children()[0])['text'], 'folder')
+
+    def test_card_click_selects_job(self):
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
+        first, second = self.app.jobs
+        self.assertIs(self.app.selected, second)
+        first.message.event_generate('<Button-1>')
+        self.app.update()
+        self.assertIs(self.app.selected, first)
+        second.summary.event_generate('<Button-1>')
+        self.app.update()
+        self.assertIs(self.app.selected, second)
 
     def test_corrupt_archive_does_not_block_next_archive(self):
         broken = self.base / 'broken.zip'
@@ -88,17 +102,17 @@ class UITests(unittest.TestCase):
         with py7zr.SevenZipFile(src, 'w', password='secret') as z:
             z.writestr('hello', 'hello.txt')
         self.app.on_drop_files([str(src)])
-        self.pump(lambda: self.app._pw_visible)
-        self.app.password_var.set('wrong')
+        job = self.app.jobs[0]
+        self.pump(lambda: job.pw_frame.winfo_manager())
+        job.pw_var.set('wrong')
         self.app.start_extract()
-        self.pump(lambda: not self.app.busy and self.app.jobs[0].state == 'password')
-        self.app.password_var.set('secret')
+        self.pump(lambda: not self.app.busy and job.state == 'password')
+        job.pw_var.set('secret')
         self.app.start_extract()
-        self.pump(lambda: self.app.jobs[0].state == 'done')
-        self.assertEqual((Path(self.app.jobs[0].result) / 'hello.txt').read_text(), 'hello')
-        self.app.on_drop_files([str(self.archive('plain.zip'))])
-        self.assertEqual(self.app.password_var.get(), '')
-        self.assertFalse(self.app._pw_visible)
+        self.pump(lambda: job.state == 'done')
+        self.assertEqual((Path(job.result) / 'hello.txt').read_text(), 'hello')
+        self.assertEqual(job.pw_var.get(), '')
+        self.assertFalse(job.pw_frame.winfo_manager())
 
     def test_cancel_and_restart(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
@@ -122,15 +136,16 @@ class UITests(unittest.TestCase):
         with py7zr.SevenZipFile(src, 'w', password='secret', header_encryption=True) as z:
             z.writestr('hidden', 'hidden.txt')
         self.app.on_drop_files([str(src)])
-        self.pump(lambda: self.app._pw_visible)
-        self.app.password_var.set('wrong')
+        job = self.app.jobs[0]
+        self.pump(lambda: job.pw_frame.winfo_manager())
+        job.pw_var.set('wrong')
         self.app.start_extract()
         self.pump(lambda: not self.app.busy)
-        self.assertEqual(self.app.jobs[0].state, 'password')
-        self.app.password_var.set('secret')
+        self.assertEqual(job.state, 'password')
+        job.pw_var.set('secret')
         self.app.start_extract()
-        self.pump(lambda: self.app.jobs[0].state == 'done')
-        self.assertEqual((Path(self.app.jobs[0].result) / 'hidden.txt').read_text(), 'hidden')
+        self.pump(lambda: job.state == 'done')
+        self.assertEqual((Path(job.result) / 'hidden.txt').read_text(), 'hidden')
 
     def test_open_result_uses_actual_collision_destination(self):
         src = self.archive('one.zip')
@@ -146,11 +161,81 @@ class UITests(unittest.TestCase):
             open_folder.assert_called_once_with(job.result)
         self.assertEqual(Path(job.result).name, 'one (2)')
 
+    def test_extract_tracks_progress_counts(self):
+        src = self.base / 'multi.zip'
+        with zipfile.ZipFile(src, 'w') as z:
+            for i in range(3):
+                z.writestr(f'file{i}.txt', f'data{i}')
+        self.app.on_drop_files([str(src)])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        self.app.start_extract()
+        self.pump(lambda: job.state == 'done')
+        self.assertEqual(job.prog_total, 15)  # 5B x 3 (バイト単位)
+        self.assertEqual(job.prog_done, 15)
+        self.assertTrue(job.last_file)
+
+    def test_remove_single_card(self):
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
+        first = self.app.jobs[0]
+        self.app.remove_job(first)
+        self.app.update()
+        self.assertEqual(len(self.app.jobs), 1)
+        self.assertIs(self.app.selected, self.app.jobs[0])
+
+    def test_retry_failed_job(self):
+        broken = self.base / 'broken.zip'
+        broken.write_bytes(b'not a zip')
+        self.app.on_drop_files([str(broken)])
+        self.pump(lambda: self.app.jobs[0].state == 'failed')
+        job = self.app.jobs[0]
+        self.app.update()
+        self.assertTrue(job.retry_btn.winfo_manager())
+        job.retry_btn.invoke()
+        self.pump(lambda: not self.app.busy and job.state == 'failed')
+
+    def test_state_badge_and_overall_bar(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        self.assertEqual(job.state_badge.cget('text'), '解凍できます')
+        job.state = 'failed'
+        self.app._sync_card_chrome(job)
+        self.assertEqual(job.state_badge.cget('text'), '失敗')
+        self.assertEqual(job.fmt_badge.cget('text'), 'ZIP')
+        self.app._extract_total = 2
+        self.app.busy = True
+        self.app._sync_overall()
+        self.app.update()
+        self.assertTrue(self.app.overall_frame.winfo_manager())
+        self.assertEqual(self.app.overall_label.cget('text'), '全体 0/2')
+        self.app.busy = False
+        self.app._sync_overall()
+        self.app.update()
+        self.assertFalse(self.app.overall_frame.winfo_manager())
+
+    def test_unrar_button_appears_on_missing_tool_error(self):
+        from unzipper import RAR_TOOL_HELP
+        self.assertFalse(self.app.unrar_btn.winfo_manager())
+        with patch('app.find_unrar_tool', return_value=None):
+            self.app._maybe_show_unrar_button(RAR_TOOL_HELP)
+            self.assertTrue(self.app.unrar_btn.winfo_manager())
+            self.app._maybe_show_unrar_button('書庫が壊れています')
+            self.assertTrue(self.app.unrar_btn.winfo_manager())
+        with patch('app.find_unrar_tool', return_value=None):
+            self.app._hide_unrar_button()
+            self.assertFalse(self.app.unrar_btn.winfo_manager())
+
     def test_minimum_window_keeps_actions_visible_with_details_and_password(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')
-        self.app.toggle_details()
-        self.app._show_password_row()
+        job = self.app.jobs[0]
+        job.details_btn.invoke()
+        job.needs_password = True
+        self.app._sync_card_pw_row(job)
+        self.app.update()
+        self.assertTrue(job.pw_frame.winfo_manager())
         self.app.geometry('600x640')
         self.app.deiconify()
         self.app.update()

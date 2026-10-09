@@ -21,10 +21,16 @@ ArchiveKind = Literal["zip", "tar", "rar", "7z"]
 SUPPORTED_SUFFIXES = (".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz", ".rar")
 
 RAR_TOOL_HELP = (
-    "RARの展開には別途 UnRAR が必要です。"
+    "RARの展開にはUnRARが必要です。「UnRARを取得」ボタンで自動取得するか、"
     "WinRARをインストールするか、UnRAR.exe を toolsフォルダに置くか、"
     "環境変数 KANTAN_UNRAR にパスを指定してください。"
 )
+
+# 自動取得の既定URL (自Releaseに添付したUnRAR.exe。環境変数で上書き可)。
+UNRAR_RELEASE_URL = (
+    "https://github.com/neoenox/unzip-tool/releases/latest/download/UnRAR.exe"
+)
+UNRAR_SFX_URL = "https://www.rarlab.com/rar/unrarw64.exe"
 
 
 def is_supported(path: str | os.PathLike) -> bool:
@@ -57,12 +63,25 @@ def _base_dirs() -> list[Path]:
     return dirs
 
 
+def user_tool_dir() -> Path:
+    """実行時に自動取得したUnRAR.exeの配置先 (書き込み可能な場所)。"""
+    appdata = os.environ.get("LOCALAPPDATA", "").strip().strip('"')
+    if appdata:
+        return Path(appdata) / "KantanKaiko" / "tools"
+    return Path.home() / ".kantan-kaiko" / "tools"
+
+
+def user_unrar_path() -> Path:
+    return user_tool_dir() / "UnRAR.exe"
+
+
 def find_unrar_tool() -> Path | None:
-    """UnRAR.exe を探す。環境変数 > tools隣接 > WinRAR > PATH の順。"""
+    """UnRAR.exe を探す。環境変数 > ユーザー取得分 > tools隣接 > WinRAR > PATH の順。"""
     cands: list[Path] = []
     env = os.environ.get("KANTAN_UNRAR", "").strip().strip('"')
     if env:
         cands.append(Path(env))
+    cands.append(user_unrar_path())
     for base in _base_dirs():
         cands.append(base / "tools" / "UnRAR.exe")
     pf = os.environ.get("ProgramFiles", r"C:\Program Files")
@@ -83,6 +102,75 @@ def find_unrar_tool() -> Path | None:
 
 
 _rar_tool_ready = False
+
+
+def download_unrar(dest: str | os.PathLike | None = None,
+                   url: str | None = None,
+                   expected_sha256: str | None = None,
+                   timeout: int = 60) -> Path:
+    """UnRAR.exe をダウンロードして配置する (標準ライブラリのみ)。
+
+    dest省略時は user_unrar_path()。Atomicに書き込み、MZヘッダと
+    サイズで最低限検証する。expected_sha256指定時はハッシュも検証する。
+    """
+    import hashlib
+    import urllib.request
+
+    target = Path(dest) if dest else user_unrar_path()
+    link = (url or os.environ.get("KANTAN_UNRAR_URL", "").strip()
+            or UNRAR_RELEASE_URL)
+    want = (expected_sha256 or os.environ.get("KANTAN_UNRAR_SHA256", "").strip()
+            or None)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.parent / (target.name + ".download-tmp")
+    try:
+        request = urllib.request.Request(link, headers={"User-Agent": "KantanKaiko"})
+        with urllib.request.urlopen(request, timeout=timeout) as response, \
+                open(tmp, "wb") as fp:
+            shutil.copyfileobj(response, fp, length=1024 * 256)
+    except Exception as error:
+        raise ValueError(f"UnRARをダウンロードできません: {link} ({error})")
+    try:
+        if tmp.stat().st_size < 100_000:
+            raise ValueError(f"ダウンロードしたファイルが小さすぎます: {link}")
+        with open(tmp, "rb") as fp:
+            if fp.read(2) != b"MZ":
+                raise ValueError(f"ダウンロードしたファイルが実行形式ではありません: {link}")
+        if want:
+            digest = hashlib.sha256()
+            with open(tmp, "rb") as fp:
+                for chunk in iter(lambda: fp.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            if digest.hexdigest().lower() != want.lower():
+                raise ValueError("ハッシュが一致しないため配置を中止しました。")
+        os.replace(tmp, target)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+    global _rar_tool_ready
+    _rar_tool_ready = False
+    return target
+
+
+def is_missing_unrar_error(message: str) -> bool:
+    return "UnRAR" in (message or "")
+
+
+def ensure_unrar_tool(auto_download: bool = False,
+                      dest: str | os.PathLike | None = None) -> Path:
+    """UnRAR.exe を返す。無ければ案内付きValueError。auto時は取得を試みる。"""
+    tool = find_unrar_tool()
+    if tool is not None:
+        return tool
+    if not auto_download:
+        raise ValueError(RAR_TOOL_HELP)
+    target = download_unrar(dest)
+    if not target.is_file():
+        raise ValueError(RAR_TOOL_HELP)
+    return target
 
 
 def _setup_rar_tool() -> None:
@@ -260,15 +348,60 @@ def _check_names_safe(base: Path, names: list[str]) -> None:
 ProgressCb = Callable[[int, int], None]
 
 
+class _CountReader:
+    """読み進めたバイト数を報告するラッパー (固めRARの停滞対策)。
+
+    copyfileobjはread/readintoのどちらを使うか決め打ちできないため両方数える。
+    """
+
+    def __init__(self, raw, on_read: Callable[[int], None]):
+        self._raw = raw
+        self._on_read = on_read
+        self._n = 0
+
+    @property
+    def n(self) -> int:
+        return self._n
+
+    def read(self, size: int = -1):
+        data = self._raw.read(size)
+        if data:
+            self._n += len(data)
+            self._on_read(self._n)
+        return data
+
+    def readinto(self, buf) -> int:
+        readinto = getattr(self._raw, "readinto", None)
+        if readinto is None:
+            data = self._raw.read(len(buf))
+            n = len(data)
+            buf[:n] = data
+        else:
+            n = readinto(buf)
+        if n:
+            self._n += n
+            self._on_read(self._n)
+        return n
+
+    def __getattr__(self, name: str):
+        return getattr(self.__dict__["_raw"], name)
+
+
 def _extract_into(archive: str | os.PathLike, dest: Path,
                   on_progress: ProgressCb | None = None, password: bytes | None = None,
                   on_file: Callable[[str], None] | None = None) -> None:
-    """Write into a private staging directory; never publish from a worker."""
+    """Write into a private staging directory; never publish from a worker.
+
+    進捗はバイト単位 (done_bytes, total_bytes) で報告する。固めRARのように
+    1ファイルの展開が長い場合でもバーが動き続ける。
+    """
     kind = detect_kind(archive)
     entries = list_contents(archive, password)
     _validate_entries(dest, entries)
+    total = sum(e.size for e in entries if not e.is_dir)
     def copy_members(members, open_member):
-        for i, (entry, member) in enumerate(zip(entries, members), 1):
+        completed = 0
+        for entry, member in zip(entries, members):
             if on_file:
                 on_file(entry.name)
             out = _safe_join(dest, entry.name)
@@ -277,9 +410,14 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
             else:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 with open_member(member) as src, open(out, "xb") as fp:
-                    shutil.copyfileobj(src, fp, length=1024 * 1024)
+                    if on_progress and total:
+                        reader = _CountReader(src, lambda n: on_progress(completed + n, total))
+                        shutil.copyfileobj(reader, fp, length=1024 * 1024)
+                    else:
+                        shutil.copyfileobj(src, fp, length=1024 * 1024)
+                    completed += entry.size
             if on_progress:
-                on_progress(i, len(entries))
+                on_progress(completed, total)
     if kind == "zip":
         with zipfile.ZipFile(archive) as zf:
             infos = zf.infolist()
@@ -320,7 +458,7 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
                     on_progress(0, 0)  # indeterminate, not a misleading percentage
                 sf.extractall(path=dest)
                 if on_progress:
-                    on_progress(len(entries), len(entries))
+                    on_progress(total, total)
         except py7zr.exceptions.PasswordRequired as e:
             raise PasswordRequiredError("パスワードを入力してください。") from e
         except (py7zr.exceptions.CrcError, EOFError) as e:
