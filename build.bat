@@ -1,13 +1,11 @@
 @echo off
-REM Build KantanKaiko.exe (requires Python 3.11+)
-REM Usage: build.bat
-REM If tools\UnRAR.exe exists, it is bundled so rar works standalone.
+REM Reproducible local build: same PyInstaller flags as GitHub Windows CI.
+REM UnRAR is never bundled; users can install it or set KANTAN_UNRAR.
 setlocal
 cd /d "%~dp0"
-pip install -r requirements.txt
-pip install -r requirements-build.txt
-set ADD_BIN=
-if exist "tools\UnRAR.exe" set ADD_BIN=--add-binary "tools\UnRAR.exe;tools"
-pyinstaller --noconfirm --clean --onefile --windowed --name KantanKaiko %ADD_BIN% app.py
+python -m pip install -r requirements.txt -r requirements-build.txt
+if errorlevel 1 exit /b 1
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+if errorlevel 1 exit /b 1
 echo.
 echo Done: dist\KantanKaiko.exe
