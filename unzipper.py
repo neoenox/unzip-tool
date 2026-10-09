@@ -234,6 +234,13 @@ def archive_needs_password(archive: str | os.PathLike) -> bool:
     return False
 
 
+def _archive_needs_password_quiet(archive: str | os.PathLike) -> bool:
+    try:
+        return archive_needs_password(archive)
+    except Exception:
+        return False
+
+
 def _validate_entries(base: Path, entries: list[Entry]) -> None:
     seen: dict[str, bool] = {}
     for entry in entries:
@@ -268,6 +275,9 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
     kind = detect_kind(archive)
     entries = list_contents(archive, password)
     _validate_entries(dest, entries)
+    if not entries and not password and _archive_needs_password_quiet(archive):
+        # ヘッダ暗号化RAR等: 一覧が空でもPW要求ありなら空フォルダを作らず促す
+        raise PasswordRequiredError("パスワードを入力してください。")
     total_bytes = sum(entry.size for entry in entries if not entry.is_dir)
     copied = 0
     class ProgressReader:
@@ -323,6 +333,12 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
                 copy_members(members, lambda i: rf.open(i, pwd=_password_text(password)))
         except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
             raise PasswordRequiredError("パスワードが必要か、間違っています。入力して再試行してください。") from e
+        except (rarfile.BadRarFile, rarfile.RarCRCError) as e:
+            # 誤PWでは復号結果が壊れてCRC/読み切り失敗になる。PW付きで
+            # 暗号書庫なら「違うか壊れている」に寄せ、素の破損はそのまま。
+            if password and _archive_needs_password_quiet(archive):
+                raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。入力して再試行してください。") from e
+            raise
     else:
         import py7zr
         try:
