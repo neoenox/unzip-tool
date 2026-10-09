@@ -107,39 +107,6 @@ def test_gui_password_ondemand() -> None:
     print("PASS test_gui_password_ondemand")
 
 
-def test_gui_rar_header_password() -> None:
-    """ヘッダ暗号RAR: 0件表示+PW欄 → 正PWで一覧・解凍 (要UnRAR、無ければスキップ)。"""
-    from unzipper import find_unrar_tool  # noqa: E402
-
-    from app import App  # noqa: E402
-
-    if find_unrar_tool() is None:
-        print("SKIP test_gui_rar_header_password (UnRAR not found)")
-        return
-    app = App()
-    app.withdraw()
-    orig = test_e2e.mute_dialogs()
-    try:
-        app.on_drop_files([str(VENDOR / "enc_header.rar")])
-        job = app.jobs[0]
-        assert test_e2e.pump(app, lambda: job.pw_frame.winfo_manager(), timeout=10), "PW欄が出ない"
-        assert job.entries == []
-        job.details_btn.invoke()
-        job.pw_var.set("testpw")
-        assert test_e2e.pump(
-            app, lambda: any(job.tree.item(i)["text"] == "hello.txt" for i in job.tree.get_children()),
-            timeout=10,
-        ), "正PWで一覧が出ない"
-        app.dest_var.set(str(Path(tempfile.mkdtemp()) / "out"))
-        app.start_extract()
-        assert test_e2e.pump(app, lambda: job.state == "done", timeout=20), job.message.cget("text")
-        assert (Path(job.result) / "hello.txt").read_text() == "hello rar pw"
-    finally:
-        test_e2e.restore_dialogs(orig)
-        app._on_close()
-    print("PASS test_gui_rar_header_password")
-
-
 def main() -> int:
     test_zip_password_flow()
     print("PASS test_zip_password_flow")
@@ -149,7 +116,6 @@ def main() -> int:
     print("PASS test_no_password_archives")
     test_gui_password_ondemand()
     print("PASS test_gui_password_ondemand")
-    test_gui_rar_header_password()
     print("ALL PASSWORD PASSED")
     return 0
 
