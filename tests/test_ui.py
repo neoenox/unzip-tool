@@ -250,6 +250,32 @@ class UITests(unittest.TestCase):
         self.assertEqual(labels[2].cget('foreground'), '#1d4ed8')
         self.assertEqual(labels[0].cget('foreground'), '#94a3b8')
 
+    def test_per_card_dest_change(self):
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
+        first, second = self.app.jobs
+        target = self.base / 'custom'
+        target.mkdir()
+        with patch('app.filedialog.askdirectory', return_value=str(target)):
+            first.dest_btn.invoke()
+        self.app.update()
+        self.assertTrue(first.dest_customized)
+        self.assertEqual(first.dest.parent, target)
+        self.assertIn('個別', first.dest_label.cget('text'))
+        # 一括変更は個別設定を上書きしない
+        other = self.base / 'bulk'
+        other.mkdir()
+        with patch('app.filedialog.askdirectory', return_value=str(other)):
+            self.app.choose_dest()
+        self.app.update()
+        self.assertEqual(first.dest.parent, target)
+        self.assertEqual(second.dest.parent, other)
+        self.assertFalse(second.dest_customized)
+        # 保存先欄の直接編集も個別扱い
+        self.app.select_job(second)
+        self.app.dest_var.set(str(other / 'manual'))
+        self.assertTrue(second.dest_customized)
+
     def test_minimum_window_keeps_actions_visible_with_details_and_password(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')

@@ -50,6 +50,7 @@ FILTERS = [
 class ArchiveJob:
     archive: Path
     dest: Path
+    dest_customized: bool = False
     state: str = "scanning"
     entries: list[Entry] = field(default_factory=list)
     password: str = ""
@@ -71,6 +72,8 @@ class ArchiveJob:
     remove_btn: object = None
     retry_btn: object = None
     dest_label: object = None
+    dest_row: object = None
+    dest_btn: object = None
     pw_frame: object = None
     pw_var: object = None
     pw_entry: object = None
@@ -149,8 +152,13 @@ class App(tk.Tk):
         job.summary.pack(anchor="w", pady=(8, 4))
         job.message = ttk.Label(job.card, text="確認中", style="Card.TLabel", wraplength=max(280, self.winfo_width() - 96))
         job.message.pack(anchor="w")
-        job.dest_label = ttk.Label(job.card, text="", style="CardMuted.TLabel", font=("Yu Gothic UI", 9))
-        job.dest_label.pack(anchor="w", pady=(4, 0))
+        job.dest_row = ttk.Frame(job.card, style="Card.TFrame")
+        job.dest_row.pack(fill="x", pady=(4, 0))
+        job.dest_label = ttk.Label(job.dest_row, text="", style="CardMuted.TLabel", font=("Yu Gothic UI", 9))
+        job.dest_label.pack(side="left", fill="x", expand=True)
+        job.dest_btn = ttk.Button(job.dest_row, text="変更", width=6,
+                                  command=lambda: self.choose_dest_for(job))
+        job.dest_btn.pack(side="left", padx=(8, 0))
         job.progress = ttk.Progressbar(job.card, mode="determinate")
         # パスワード欄 (必要な書庫のカード内にだけ表示)
         job.pw_var = tk.StringVar()
@@ -195,7 +203,10 @@ class App(tk.Tk):
             elif not show_retry and job.retry_btn.winfo_manager():
                 job.retry_btn.pack_forget()
             job.remove_btn.configure(state="disabled" if self.busy else "normal")
-            job.dest_label.configure(text=f"保存先: {job.result or job.dest}")
+            dest_text = f"保存先: {job.result or job.dest}"
+            if job.dest_customized and not job.result:
+                dest_text += "（個別）"
+            job.dest_label.configure(text=dest_text)
         except Exception:
             pass
 
@@ -274,6 +285,7 @@ class App(tk.Tk):
     def _dest_changed(self, *_):
         if not self._syncing and not self.busy and self.selected and self.dest_var.get().strip():
             self.selected.dest = Path(self.dest_var.get().strip().strip('"'))
+            self.selected.dest_customized = True
             self._sync_card_chrome(self.selected)
 
     def _on_card_password(self, job):
@@ -326,12 +338,24 @@ class App(tk.Tk):
         if paths:
             self.on_drop_files(list(paths))
 
+    def choose_dest_for(self, job):
+        """カード単位の保存先変更。個別設定として記録し、一括変更では上書きしない。"""
+        if self.busy or job not in self.jobs:
+            return
+        folder = filedialog.askdirectory(title="この書庫の保存先フォルダを選ぶ")
+        if folder:
+            job.dest = Path(folder) / default_dest_for(job.archive).name
+            job.dest_customized = True
+            self._sync_card_chrome(job)
+            if self.selected is job:
+                self.select_job(job)
+
     def choose_dest(self):
         folder = filedialog.askdirectory(title="保存先の親フォルダを選ぶ")
         if folder:
             self._custom_parent = Path(folder)
             for job in self.jobs:
-                if job.state != "done":
+                if job.state != "done" and not job.dest_customized:
                     job.dest = self._custom_parent / default_dest_for(job.archive).name
                 self._sync_card_chrome(job)
             if self.selected:
@@ -349,8 +373,9 @@ class App(tk.Tk):
             if path.is_dir():
                 self._custom_parent = path
                 for job in self.jobs:
-                    if job.state != "done":
+                    if job.state != "done" and not job.dest_customized:
                         job.dest = path / default_dest_for(job.archive).name
+                    self._sync_card_chrome(job)
                 continue
             if not path.is_file() or not is_supported(path):
                 rejected.append(path.name or str(path))
