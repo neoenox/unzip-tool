@@ -115,6 +115,7 @@ def main() -> int:
     test_no_password_archives()
     print("PASS test_no_password_archives")
     test_gui_password_ondemand()
+    print("PASS test_gui_password_ondemand")
     print("ALL PASSWORD PASSED")
     return 0
 
