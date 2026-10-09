@@ -31,7 +31,8 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python -c "import os; from version import VERSION; assert os.environ['RELEASE_TAG'] == 'v' + VERSION, 'Tag and application version differ'"
       - name: Install unrar (for tests)
-        run: choco install unrar -y
+        shell: pwsh
+        run: ./scripts/ci-install-unrar.ps1
       - name: Test
         run: python tests/run_all.py
       - name: Build exe
