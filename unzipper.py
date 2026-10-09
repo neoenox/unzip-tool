@@ -262,11 +262,24 @@ ProgressCb = Callable[[int, int], None]
 
 def _extract_into(archive: str | os.PathLike, dest: Path,
                   on_progress: ProgressCb | None = None, password: bytes | None = None,
-                  on_file: Callable[[str], None] | None = None) -> None:
+                  on_file: Callable[[str], None] | None = None,
+                  on_bytes: ProgressCb | None = None) -> None:
     """Write into a private staging directory; never publish from a worker."""
     kind = detect_kind(archive)
     entries = list_contents(archive, password)
     _validate_entries(dest, entries)
+    total_bytes = sum(entry.size for entry in entries if not entry.is_dir)
+    copied = 0
+    class ProgressReader:
+        def __init__(self, source):
+            self.source = source
+        def read(self, size):
+            nonlocal copied
+            data = self.source.read(size)
+            copied += len(data)
+            if on_bytes:
+                on_bytes(copied, total_bytes)
+            return data
     def copy_members(members, open_member):
         for i, (entry, member) in enumerate(zip(entries, members), 1):
             if on_file:
@@ -277,7 +290,7 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
             else:
                 out.parent.mkdir(parents=True, exist_ok=True)
                 with open_member(member) as src, open(out, "xb") as fp:
-                    shutil.copyfileobj(src, fp, length=1024 * 1024)
+                    shutil.copyfileobj(ProgressReader(src), fp, length=1024 * 1024)
             if on_progress:
                 on_progress(i, len(entries))
     if kind == "zip":
@@ -364,12 +377,13 @@ def clean_staging(staging: Path) -> None:
 
 def extract_archive(archive: str | os.PathLike, dest: str | os.PathLike,
                     on_progress: ProgressCb | None = None,
-                    password: bytes | None = None) -> Path:
+                    password: bytes | None = None,
+                    on_bytes: ProgressCb | None = None) -> Path:
     parent = Path(dest).absolute().parent
     parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".kantan-", dir=parent))
     try:
-        _extract_into(archive, staging, on_progress, password)
+        _extract_into(archive, staging, on_progress, password, on_bytes=on_bytes)
         return publish_staging(staging, dest)
     finally:
         clean_staging(staging)

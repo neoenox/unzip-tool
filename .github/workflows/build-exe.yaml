@@ -26,6 +26,10 @@ jobs:
           python-version: "3.11"
       - name: Install build deps
         run: pip install -r requirements.txt -r requirements-build.txt
+      - name: Verify application version matches release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python -c "import os; from version import VERSION; assert os.environ['RELEASE_TAG'] == 'v' + VERSION, 'Tag and application version differ'"
       - name: Install unrar (for tests)
         run: choco install unrar -y
       - name: Test
@@ -39,6 +43,11 @@ jobs:
           if ($executable.PSIsContainer -or $executable.Length -eq 0) {
             throw "Release executable is missing or empty."
           }
+      - name: Verify RAR in distribution executable
+        run: |
+          $unrar = python -c "from unzipper import find_unrar_tool; print(find_unrar_tool() or '')"
+          if (-not $unrar) { throw "UnRAR is required for the distribution check." }
+          python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar $unrar
       - name: Build installer
         env:
           RELEASE_TAG: ${{ github.ref_name }}

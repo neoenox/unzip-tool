@@ -1,12 +1,12 @@
 param(
-    [string]$Version = '1.0.1',
+    [string]$Version = '1.1.0',
     [string]$ExecutablePath,
     [string]$CompilerPath
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
-    throw 'Version must be a semantic version such as 1.0.1 or 1.1.0-beta.1.'
+    throw 'Version must be a semantic version such as 1.1.0 or 1.1.0-beta.1.'
 }
 $numericVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
 if (-not $ExecutablePath) {

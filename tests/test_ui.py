@@ -47,6 +47,7 @@ class UITests(unittest.TestCase):
         return src
 
     def test_empty_and_collapsed_details(self):
+        self.assertIsNone(self.app._updating)
         self.assertFalse(self.app._pw_visible)
         self.assertFalse(self.app.details.winfo_manager())
         self.app.on_drop_files([str(self.archive('one.zip'))])
@@ -54,6 +55,31 @@ class UITests(unittest.TestCase):
         self.app.toggle_details()
         self.assertEqual(self.app.details.winfo_manager(), 'pack')
         self.assertEqual(self.app.tree.item(self.app.tree.get_children()[0])['text'], 'folder')
+
+    def test_manual_update_check_and_official_release_link(self):
+        from unittest.mock import Mock
+        task = Mock()
+        task.poll.return_value = [('done', {'newer': True, 'version': '1.2.0',
+                                           'url': 'https://github.com/neoenox/unzip-tool/releases/tag/v1.2.0'})]
+        with patch('app.BackgroundTask', return_value=task) as constructor:
+            self.app.check_updates()
+        constructor.assert_called_once_with('update', '')
+        self.app._poll_update()
+        self.assertEqual(self.app.update_btn.cget('text'), '新版を開く')
+        with patch('app.webbrowser.open') as browser:
+            self.app.check_updates()
+        browser.assert_called_once_with('https://github.com/neoenox/unzip-tool/releases/tag/v1.2.0')
+
+    def test_failed_update_can_be_retried(self):
+        from unittest.mock import Mock
+        task = Mock()
+        task.poll.return_value = [('error', 'offline')]
+        with patch('app.BackgroundTask', return_value=task):
+            self.app.check_updates()
+        self.app._poll_update()
+        self.assertEqual(str(self.app.update_btn.cget('state')), 'normal')
+        self.assertIsNone(self.app._updating)
+        self.assertIn('再試行', self.app.update_text.get())
 
     def test_corrupt_archive_does_not_block_next_archive(self):
         broken = self.base / 'broken.zip'
