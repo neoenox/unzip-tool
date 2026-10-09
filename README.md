@@ -16,7 +16,7 @@ Windows向けのシンプルな解凍ソフト。zip/tarは依存なし、rarの
 いずれか1つ。無ければrar選択時に案内が出る。
 
 1. WinRARをインストール (UnRAR.exe を自動検出)
-2. `tools/UnRAR.exe` を置く (同梱のexe化も可能→下記)
+2. `tools/UnRAR.exe` をexeと同じディレクトリの `tools/` に置く（同梱しない）
 3. 環境変数 `KANTAN_UNRAR` にUnRAR.exeのパスを指定
 
 UnRARはフリーウェア ([rarlab](https://www.rarlab.com/rar_add.htm) のUnRAR for Windows)。
@@ -42,32 +42,34 @@ python app.py
 
 ## exe化
 
+ローカル `build.bat` と GitHub Actions は同じPyInstaller引数でビルドします。`KantanKaiko.spec` は自動生成・Git管理対象外であり、製品のビルドには使いません。UnRARは再配布方針を決めるまでexeに埋め込みません（Issue #15）。
+
 ```bat
 build.bat
 REM → dist\KantanKaiko.exe ができる (単一ファイル、Python不要)
-REM tools\UnRAR.exe があれば同梱され、そのexe単体でrarも解凍できる
+REM UnRARは同梱しない。RARはWinRAR/外付けUnRAR/KANTAN_UNRAR経由で利用
 ```
 
 ## インストーラー
 
-`KantanKaiko-Setup-1.0.0.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
+`KantanKaiko-Setup-1.1.0.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
 
 ローカルで作成する場合はInno Setup 6を用意し、先に `build.bat` でexeを作成する。
 
 ```powershell
-./scripts/build-installer.ps1 -Version 1.0.0
-# → dist/KantanKaiko-Setup-1.0.0.exe
+./scripts/build-installer.ps1 -Version 1.1.0
+# → dist/KantanKaiko-Setup-1.1.0.exe
 ```
 
 PRのCIではインストール・ショートカット・バージョン登録・再インストール・アンインストールと、追加したユーザーファイルを消さないことまで検証する。リリースタグのpushでは、通常のexeとタグのバージョン番号を付けたインストーラーの両方をReleaseへ添付する。
 
-リリースタグ（`v1.0.0` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` とインストーラーを自動添付する。ローカルでタグを作っただけでは実行されない。
+リリースタグ（`v1.1.0` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` とインストーラーを自動添付する。ローカルでタグを作っただけでは実行されない。
 
 テスト・ビルド失敗時やexeが未生成・空の場合は公開処理へ進まない。通常のブランチpush・PR・手動実行ではReleaseを作成しない。新しい変更をリリースする場合は、対象のPRをマージしたコミットへタグを付ける。
 
 ```bat
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 ## テスト
