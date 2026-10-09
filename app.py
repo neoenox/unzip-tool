@@ -71,6 +71,7 @@ class ArchiveJob:
     fmt_badge: object = None
     remove_btn: object = None
     retry_btn: object = None
+    action_btn: object = None
     dest_label: object = None
     dest_row: object = None
     dest_btn: object = None
@@ -185,6 +186,7 @@ class App(tk.Tk):
         job.tree.pack(side="left", fill="both", expand=True)
         tree_scroll.pack(side="right", fill="y")
         job.retry_btn = ttk.Button(job.card, text="再試行", command=lambda: self.retry_job(job))
+        job.action_btn = ttk.Button(job.card, text="", command=lambda: self.invoke_card_action(job))
         # カードのどこをクリックしてもその書庫を選択する
         for widget in (job.card, row, job.summary, job.message, job.dest_label):
             widget.bind("<Button-1>", lambda _e, j=job: self.select_job(j))
@@ -202,6 +204,14 @@ class App(tk.Tk):
                 job.retry_btn.pack(anchor="w", pady=(8, 0))
             elif not show_retry and job.retry_btn.winfo_manager():
                 job.retry_btn.pack_forget()
+            action = self._card_action(job) if not self.busy else None
+            if action and not job.action_btn.winfo_manager():
+                job.action_btn.configure(text=action[0])
+                job.action_btn.pack(anchor="w", pady=(8, 0))
+            elif action:
+                job.action_btn.configure(text=action[0])
+            elif job.action_btn.winfo_manager():
+                job.action_btn.pack_forget()
             job.remove_btn.configure(state="disabled" if self.busy else "normal")
             dest_text = f"保存先: {job.result or job.dest}"
             if job.dest_customized and not job.result:
@@ -209,6 +219,37 @@ class App(tk.Tk):
             job.dest_label.configure(text=dest_text)
         except Exception:
             pass
+
+    def _card_action(self, job) -> tuple | None:
+        """エラー種別ごとの回復操作 (表示文言, 種別)。無ければNone。"""
+        if job.state == "password":
+            return ("パスワードを入力", "password")
+        if job.state == "failed":
+            try:
+                text = job.message.cget("text")
+            except Exception:
+                text = ""
+            if "空き容量" in text:
+                return ("保存先を変更して再試行", "diskfull")
+        return None
+
+    def invoke_card_action(self, job):
+        if self.busy or job not in self.jobs:
+            return
+        action = self._card_action(job)
+        if action is None:
+            return
+        if action[1] == "password":
+            self._sync_card_pw_row(job)
+            self.select_job(job)
+            try:
+                if job.pw_frame.winfo_manager():
+                    job.pw_entry.focus_set()
+            except Exception:
+                pass
+        elif action[1] == "diskfull":
+            if self.choose_dest_for(job):
+                self.retry_job(job)
 
     def remove_job(self, job):
         if self.busy or job not in self.jobs:
@@ -338,10 +379,10 @@ class App(tk.Tk):
         if paths:
             self.on_drop_files(list(paths))
 
-    def choose_dest_for(self, job):
+    def choose_dest_for(self, job) -> bool:
         """カード単位の保存先変更。個別設定として記録し、一括変更では上書きしない。"""
         if self.busy or job not in self.jobs:
-            return
+            return False
         folder = filedialog.askdirectory(title="この書庫の保存先フォルダを選ぶ")
         if folder:
             job.dest = Path(folder) / default_dest_for(job.archive).name
@@ -349,6 +390,8 @@ class App(tk.Tk):
             self._sync_card_chrome(job)
             if self.selected is job:
                 self.select_job(job)
+            return True
+        return False
 
     def choose_dest(self):
         folder = filedialog.askdirectory(title="保存先の親フォルダを選ぶ")
