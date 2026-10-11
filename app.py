@@ -536,10 +536,12 @@ class App(tk.Tk):
     def _notify_done(self, done: int) -> None:
         if done <= 0:
             return
-        try:
-            self.bell()
-        except Exception:
-            pass
+        # テスト実行中はビープ音を鳴らさない (pytest 直下 / run_all.py 経由)。
+        if "PYTEST_CURRENT_TEST" not in os.environ and not os.environ.get("UNZIPTOOL_NO_BELL"):
+            try:
+                self.bell()
+            except Exception:
+                pass
         if os.name != "nt":
             return
         try:
