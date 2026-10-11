@@ -360,6 +360,30 @@ class UITests(unittest.TestCase):
         self.app._set_status("完了: 1 件")
         self.assertEqual(self.app.status.get(), "完了: 1 件")
 
+    def test_window_icon_uses_bundled_ico(self):
+        from app import window_icon_path
+        self.assertTrue(str(window_icon_path()).endswith("icon.ico"))
+        with patch.object(App, "iconbitmap") as mock_icon:
+            app = App()
+            app.withdraw()
+            self.addCleanup(app._on_close)
+            mock_icon.assert_called_once()
+            self.assertTrue(str(mock_icon.call_args[0][0]).endswith("icon.ico"))
+
+    def test_window_icon_missing_file_is_skipped(self):
+        with patch("app.window_icon_path", return_value=None), \
+                patch.object(App, "iconbitmap") as mock_icon:
+            app = App()
+            app.withdraw()
+            self.addCleanup(app._on_close)
+            mock_icon.assert_not_called()
+
+    def test_window_icon_failure_does_not_break_startup(self):
+        with patch.object(App, "iconbitmap", side_effect=Exception("no icon")):
+            app = App()
+            app.withdraw()
+            self.addCleanup(app._on_close)
+
     def test_scanning_spinner_shows_and_hides(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         job = self.app.jobs[0]

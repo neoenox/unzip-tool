@@ -96,6 +96,19 @@ class ArchiveJob:
     last_file: str = ""
 
 
+def window_icon_path() -> Path | None:
+    """assets/icon.ico の解決。frozen (PyInstaller) と開発時の両対応。"""
+    candidates = []
+    frozen = getattr(sys, "_MEIPASS", None)
+    if frozen:
+        candidates.append(Path(frozen) / "assets" / "icon.ico")
+    candidates.append(Path(__file__).resolve().parent / "assets" / "icon.ico")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def readable_size(size: int) -> str:
     value = float(size)
     for unit in ("B", "KB", "MB", "GB", "TB"):
@@ -111,6 +124,7 @@ class App(tk.Tk):
         self.geometry("780x760")
         self.minsize(700, 680)
         self.configure(bg="#f4f6f8")
+        self._set_window_icon()
         self.jobs: list[ArchiveJob] = []
         self.selected = None
         self.busy = False
@@ -386,6 +400,15 @@ class App(tk.Tk):
     def _archive_changed(self, *_):
         if not self._syncing:
             self.on_drop_files([self.archive_var.get()])
+
+    def _set_window_icon(self):
+        """ウィンドウ・タスクバー用アイコン。失敗しても起動は継続 (#28)。"""
+        try:
+            icon = window_icon_path()
+            if icon is not None:
+                self.iconbitmap(str(icon))
+        except Exception:
+            pass
 
     def _dest_changed(self, *_):
         if not self._syncing and not self.busy and self.selected and self.dest_var.get().strip():

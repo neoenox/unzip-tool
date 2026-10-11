@@ -5,7 +5,7 @@ setlocal
 cd /d "%~dp0"
 python -m pip install -r requirements.txt -r requirements-build.txt
 if errorlevel 1 exit /b 1
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko --icon assets/icon.ico --add-data "assets/icon.ico;assets" app.py
 if errorlevel 1 exit /b 1
 echo.
 echo Done: dist\KantanKaiko.exe
