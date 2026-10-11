@@ -361,13 +361,14 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.app.status.get(), "完了: 1 件")
 
     def test_scanning_spinner_shows_and_hides(self):
+        # 先に一覧取得を完了させる。update() が裏の listing 開始 tick を処理して
+        # スピナーを再表示する競合を避けるため、show/hide 間に update() を挟まない。
         self.app.on_drop_files([str(self.archive('one.zip'))])
         job = self.app.jobs[0]
+        self.pump(lambda: job.state == 'ready')
         self.app._show_scanning(job)
-        self.app.update()
         self.assertTrue(job.progress.winfo_manager())
         self.app._hide_scanning(job)
-        self.app.update()
         self.assertFalse(job.progress.winfo_manager())
 
     def test_wrong_password_highlights_entry(self):
@@ -474,6 +475,24 @@ class UITests(unittest.TestCase):
         for button in (self.app.extract_btn, self.app.cancel_btn):
             self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
                                  self.app.winfo_rooty() + self.app.winfo_height())
+
+
+def test_pytest_capture_mode(request):
+    """pytest の fd キャプチャは Windows Tcl 初期化と干渉する (Issue #55)。
+    既定の sys キャプチャで実行すること。unittest 実行時は無視される。"""
+    assert request.config.getoption('capture') != 'fd', (
+        'fd キャプチャでは Tk 初期化が断続的に失敗します (Issue #55)。'
+        '--capture=sys（既定）で実行してください。'
+    )
+
+
+def test_repeated_app_lifecycle():
+    """App 生成・破棄の繰り返しで Tcl 初期化が失敗しないこと (Issue #55 の回帰)。"""
+    for _ in range(15):
+        app = App()
+        app.withdraw()
+        app.update()
+        app._on_close()
 
 
 if __name__ == '__main__':
