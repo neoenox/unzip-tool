@@ -361,14 +361,14 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.app.status.get(), "完了: 1 件")
 
     def test_scanning_spinner_shows_and_hides(self):
-        # 先に一覧取得を完了させる。update() が裏の listing 開始 tick を処理して
-        # スピナーを再表示する競合を避けるため、show/hide 間に update() を挟まない。
+        # アプリ本来の listing 開始・完了遷移で表示・非表示を検証する。
+        # 手動 _show/_hide と update() の組合せは裏 tick と競合するため使わない。
         self.app.on_drop_files([str(self.archive('one.zip'))])
         job = self.app.jobs[0]
-        self.pump(lambda: job.state == 'ready')
-        self.app._show_scanning(job)
+        self.pump(lambda: self.app._listing is not None)
         self.assertTrue(job.progress.winfo_manager())
-        self.app._hide_scanning(job)
+        self.pump(lambda: job.state == 'ready')
+        self.app.update()
         self.assertFalse(job.progress.winfo_manager())
 
     def test_wrong_password_highlights_entry(self):
