@@ -279,10 +279,14 @@ class UITests(unittest.TestCase):
         labels = self.app.step_labels
         self.assertEqual(len(labels), 3)
         self.assertEqual(labels[0].cget('foreground'), '#1d4ed8')
+        self.assertFalse(self.app.scan_progress.winfo_manager())
         self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.assertTrue(self.app.scan_progress.winfo_manager())
         self.pump(lambda: self.app.jobs[0].state == 'ready')
         self.assertEqual(labels[2].cget('foreground'), '#1d4ed8')
         self.assertEqual(labels[0].cget('foreground'), '#526276')
+        self.app.update()
+        self.assertFalse(self.app.scan_progress.winfo_manager())
 
     def test_per_card_dest_change(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])

@@ -506,6 +506,18 @@ class App(tk.Tk):
                 lbl.configure(foreground="#1d4ed8" if i == active else "#526276")
         except Exception:
             pass
+        try:
+            scanning = active == 1
+            if scanning:
+                if not self.scan_progress.winfo_manager():
+                    self.scan_progress.pack(side="right")
+                    self.scan_progress.start(15)
+            else:
+                self.scan_progress.stop()
+                if self.scan_progress.winfo_manager():
+                    self.scan_progress.pack_forget()
+        except Exception:
+            pass
 
     def _sync_overall(self):
         """フッターの全体バー (○/○件)。解凍中だけ表示する。"""
@@ -827,6 +839,10 @@ class App(tk.Tk):
             self.after_cancel(self._poll_id)
         if self._password_after:
             self.after_cancel(self._password_after)
+        try:
+            self.scan_progress.stop()
+        except Exception:
+            pass
         for running in (self._listing, self._extracting):
             if running:
                 try:

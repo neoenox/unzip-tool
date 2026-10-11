@@ -99,6 +99,10 @@ def build_widgets(view):
         if i < 2:
             tk.Label(view.steps_frame, text="  →  ", bg="#f4f6f8", fg="#526276",
                      font=("Yu Gothic UI", 10)).pack(side="left")
+    # Scanning progress spinner (shown during listing phase)
+    view.scan_progress = ttk.Progressbar(view.steps_frame, mode="indeterminate", length=120)
+    view.scan_progress.pack(side="right")
+    view.scan_progress.pack_forget()  # hidden by default
     view.drop_area = tk.Frame(body, bg="white", highlightbackground="#64748b", highlightthickness=1, pady=16)
     view.drop_area.pack(fill="x")
     view.drop_title = tk.Label(view.drop_area, text="ここにファイルをドロップ", bg="white", fg="#243447", font=("Yu Gothic UI", 14, "bold"))
