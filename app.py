@@ -13,27 +13,37 @@ from tkinter import filedialog, ttk
 
 from dnd import disable_drop, enable_drop, take_dropped_files
 from jobs import BackgroundTask
-from ui import build_widgets
+from ui import Tooltip, build_widgets
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
 
 STATE_BADGE = {
-    "scanning": ("確認中", "#64748b", "#f1f5f9"),
+    "scanning": ("確認中", "#475569", "#f1f5f9"),
     "ready": ("解凍できます", "#15803d", "#dcfce7"),
     "password": ("PW必要", "#b45309", "#fef3c7"),
     "extracting": ("解凍中…", "#1d4ed8", "#dbeafe"),
     "done": ("完了", "#15803d", "#dcfce7"),
     "failed": ("失敗", "#b91c1c", "#fee2e2"),
-    "cancelled": ("中断", "#64748b", "#f1f5f9"),
+    "cancelled": ("中断", "#475569", "#f1f5f9"),
 }
 
 FORMAT_BADGE = {
     "zip": ("ZIP", "#ffffff", "#2563eb"),
     "7z": ("7z", "#ffffff", "#7c3aed"),
-    "rar": ("RAR", "#ffffff", "#ea580c"),
-    "tar": ("TAR", "#ffffff", "#0d9488"),
+    "rar": ("RAR", "#ffffff", "#c2410c"),
+    "tar": ("TAR", "#ffffff", "#0f766e"),
 }
+
+
+def short_display_name(name: str, limit: int = 32) -> str:
+    """拡張子を残して省略する (#33)。"""
+    if len(name) <= limit:
+        return name
+    stem, dot, ext = name.rpartition(".")
+    if not stem or not dot or len(ext) + 2 >= limit:
+        return name[:limit - 1] + "…"
+    return stem[:limit - len(ext) - 2] + "…" + dot + ext
 
 TITLE = "かんたん解凍"
 FILTERS = [
@@ -69,6 +79,7 @@ class ArchiveJob:
     open_button: object = None
     state_badge: object = None
     fmt_badge: object = None
+    name_btn: object = None
     remove_btn: object = None
     retry_btn: object = None
     action_btn: object = None
@@ -97,8 +108,8 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(TITLE)
-        self.geometry("760x720")
-        self.minsize(600, 640)
+        self.geometry("780x760")
+        self.minsize(700, 680)
         self.configure(bg="#f4f6f8")
         self.jobs: list[ArchiveJob] = []
         self.selected = None
@@ -141,10 +152,13 @@ class App(tk.Tk):
                                  font=("Yu Gothic UI", 9, "bold"), padx=6, pady=2)
         job.fmt_badge.pack(side="left")
         name = job.archive.name
-        short_name = name if len(name) <= 32 else name[:20] + "…" + name[-8:]
-        ttk.Button(row, text=short_name, command=lambda: self.select_job(job)).pack(side="left", padx=(8, 0))
+        short_name = short_display_name(name)
+        job.name_btn = ttk.Button(row, text=short_name, command=lambda: self.select_job(job))
+        job.name_btn.pack(side="left", padx=(8, 0))
+        Tooltip(job.name_btn, lambda: str(job.archive))
         job.remove_btn = ttk.Button(row, text="×", width=3, command=lambda: self.remove_job(job))
         job.remove_btn.pack(side="right")
+        Tooltip(job.remove_btn, lambda: "この書庫を一覧から外します（ファイル自体は削除しません）")
         job.state_badge = tk.Label(row, text="確認中", fg="#64748b", bg="#f1f5f9",
                                    font=("Yu Gothic UI", 9, "bold"), padx=6, pady=2)
         job.state_badge.pack(side="right", padx=(0, 6))
@@ -157,6 +171,7 @@ class App(tk.Tk):
         job.dest_row.pack(fill="x", pady=(4, 0))
         job.dest_label = ttk.Label(job.dest_row, text="", style="CardMuted.TLabel", font=("Yu Gothic UI", 9))
         job.dest_label.pack(side="left", fill="x", expand=True)
+        Tooltip(job.dest_label, lambda j=job: f"保存先: {j.result or j.dest}")
         job.dest_btn = ttk.Button(job.dest_row, text="変更", width=6,
                                   command=lambda: self.choose_dest_for(job))
         job.dest_btn.pack(side="left", padx=(8, 0))
@@ -180,7 +195,7 @@ class App(tk.Tk):
         job.tree = ttk.Treeview(job.details_wrap, columns=("size",), show="tree headings", height=5)
         job.tree.heading("#0", text="フォルダ / ファイル")
         job.tree.heading("size", text="サイズ")
-        job.tree.column("size", width=100, anchor="e", stretch=False)
+        job.tree.column("size", width=100, anchor="e", stretch=True, minwidth=80)
         tree_scroll = ttk.Scrollbar(job.details_wrap, command=job.tree.yview)
         job.tree.configure(yscrollcommand=tree_scroll.set)
         job.tree.pack(side="left", fill="both", expand=True)
@@ -196,6 +211,16 @@ class App(tk.Tk):
         text, fg, bg = STATE_BADGE.get(job.state, ("", "#243447", "#f4f6f8"))
         try:
             job.state_badge.configure(text=text, foreground=fg, background=bg)
+            if self.selected is job:
+                job.card.configure(style="CardSel.TFrame")
+            elif job.state == "failed":
+                job.card.configure(style="CardFailed.TFrame")
+            elif job.state == "password":
+                job.card.configure(style="CardPassword.TFrame")
+            elif job.state == "done":
+                job.card.configure(style="CardDone.TFrame")
+            else:
+                job.card.configure(style="Card.TFrame")
         except Exception:
             pass
         try:
@@ -365,7 +390,7 @@ class App(tk.Tk):
                 key = "/".join(parts[:index + 1])
                 if key not in nodes:
                     is_file = index == len(parts) - 1 and not entry.is_dir
-                    nodes[key] = job.tree.insert(parent, "end", text=part, open=True,
+                    nodes[key] = job.tree.insert(parent, "end", text=part, open=(index == 0),
                         values=(readable_size(entry.size) if is_file else "",))
                 parent = nodes[key]
 
@@ -454,7 +479,7 @@ class App(tk.Tk):
         self.dest_var.set(job.result or str(available_dest(job.dest)))
         self._syncing = False
         for item in self.jobs:
-            item.card.configure(relief="solid" if item is job else "flat", borderwidth=1)
+            self._sync_card_chrome(item)
 
     def _update_buttons(self):
         candidates = any(j.state in ("ready", "password", "failed", "cancelled") for j in self.jobs)
@@ -478,7 +503,19 @@ class App(tk.Tk):
             active = 2
         try:
             for i, lbl in enumerate(self.step_labels):
-                lbl.configure(foreground="#1d4ed8" if i == active else "#94a3b8")
+                lbl.configure(foreground="#1d4ed8" if i == active else "#526276")
+        except Exception:
+            pass
+        try:
+            scanning = active == 1
+            if scanning:
+                if not self.scan_progress.winfo_manager():
+                    self.scan_progress.pack(side="right")
+                    self.scan_progress.start(15)
+            else:
+                self.scan_progress.stop()
+                if self.scan_progress.winfo_manager():
+                    self.scan_progress.pack_forget()
         except Exception:
             pass
 
@@ -499,10 +536,12 @@ class App(tk.Tk):
     def _notify_done(self, done: int) -> None:
         if done <= 0:
             return
-        try:
-            self.bell()
-        except Exception:
-            pass
+        # テスト実行中はビープ音を鳴らさない (pytest 直下 / run_all.py 経由)。
+        if "PYTEST_CURRENT_TEST" not in os.environ and not os.environ.get("UNZIPTOOL_NO_BELL"):
+            try:
+                self.bell()
+            except Exception:
+                pass
         if os.name != "nt":
             return
         try:
@@ -802,6 +841,10 @@ class App(tk.Tk):
             self.after_cancel(self._poll_id)
         if self._password_after:
             self.after_cancel(self._password_after)
+        try:
+            self.scan_progress.stop()
+        except Exception:
+            pass
         for running in (self._listing, self._extracting):
             if running:
                 try:

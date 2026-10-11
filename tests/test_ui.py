@@ -57,6 +57,40 @@ class UITests(unittest.TestCase):
         self.app.update()
         self.assertEqual(job.details_wrap.winfo_manager(), 'pack')
         self.assertEqual(job.tree.item(job.tree.get_children()[0])['text'], 'folder')
+        folder_id = job.tree.get_children()[0]
+        self.assertTrue(job.tree.item(folder_id)['open'])
+        file_id = job.tree.get_children(folder_id)[0]
+        self.assertEqual(job.tree.item(file_id)['text'], '日本語.txt')
+        self.assertFalse(job.tree.item(file_id)['open'])
+
+    def test_short_display_name_keeps_extension(self):
+        from app import short_display_name
+        self.assertEqual(short_display_name('a.zip'), 'a.zip')
+        self.assertEqual(short_display_name('マナと禁忌のダンジョン save.zip'),
+                         'マナと禁忌のダンジョン save.zip')
+        long_name = 'x' * 40 + '.zip'
+        short = short_display_name(long_name)
+        self.assertLessEqual(len(short), 32)
+        self.assertTrue(short.endswith('.zip'))
+        self.assertIn('…', short)
+
+    def test_rar_badge_uses_accessible_color(self):
+        src = self.base / 'color.rar'
+        src.write_bytes(b'not a real rar')
+        self.app.on_drop_files([str(src)])
+        self.app.update()
+        job = self.app.jobs[0]
+        self.assertEqual(job.fmt_badge.cget('text'), 'RAR')
+        self.assertEqual(job.fmt_badge.cget('bg'), '#c2410c')
+
+    def test_tooltip_shows_and_hides(self):
+        from ui import Tooltip
+        tip = Tooltip(self.app.dest_entry, lambda: 'hello-tip')
+        self.app.dest_entry.event_generate('<Enter>')
+        self.pump(lambda: tip._tip is not None)
+        self.app.dest_entry.event_generate('<Leave>')
+        self.app.update()
+        self.assertIsNone(tip._tip)
 
     def test_manual_update_check_and_official_release_link(self):
         from unittest.mock import Mock
@@ -245,10 +279,14 @@ class UITests(unittest.TestCase):
         labels = self.app.step_labels
         self.assertEqual(len(labels), 3)
         self.assertEqual(labels[0].cget('foreground'), '#1d4ed8')
+        self.assertFalse(self.app.scan_progress.winfo_manager())
         self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.assertTrue(self.app.scan_progress.winfo_manager())
         self.pump(lambda: self.app.jobs[0].state == 'ready')
         self.assertEqual(labels[2].cget('foreground'), '#1d4ed8')
-        self.assertEqual(labels[0].cget('foreground'), '#94a3b8')
+        self.assertEqual(labels[0].cget('foreground'), '#526276')
+        self.app.update()
+        self.assertFalse(self.app.scan_progress.winfo_manager())
 
     def test_per_card_dest_change(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])

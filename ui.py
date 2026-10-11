@@ -4,6 +4,59 @@ from tkinter import ttk
 from version import VERSION
 
 
+class Tooltip:
+    """Hover tooltip with dynamic text (#32, #33, #35)."""
+
+    def __init__(self, widget, textfunc, delay=500):
+        self.widget = widget
+        self.textfunc = textfunc
+        self.delay = delay
+        self._after = None
+        self._tip = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _schedule(self, _event=None):
+        self._hide()
+        try:
+            self._after = self.widget.after(self.delay, self._show)
+        except Exception:
+            pass
+
+    def _show(self):
+        try:
+            text = self.textfunc()
+        except Exception:
+            return
+        if not text:
+            return
+        try:
+            x = self.widget.winfo_rootx() + 16
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+            tip = tk.Toplevel(self.widget)
+            tip.wm_overrideredirect(True)
+            tip.wm_geometry(f"+{x}+{y}")
+            tk.Label(tip, text=text, bg="#1e293b", fg="#ffffff",
+                     font=("Yu Gothic UI", 9), padx=8, pady=4).pack()
+            self._tip = tip
+        except Exception:
+            pass
+
+    def _hide(self, _event=None):
+        if self._after:
+            try:
+                self.widget.after_cancel(self._after)
+            except Exception:
+                pass
+            self._after = None
+        if self._tip:
+            try:
+                self._tip.destroy()
+            except Exception:
+                pass
+            self._tip = None
+
+
 def build_widgets(view):
     style = ttk.Style(view)
     style.theme_use("clam")
@@ -15,6 +68,10 @@ def build_widgets(view):
     style.configure("Primary.TButton", background="#1767ce", foreground="white", font=("Yu Gothic UI", 11, "bold"))
     style.map("Primary.TButton", background=[("disabled", "#d5dce5"), ("active", "#1255ab")], foreground=[("disabled", "#526276")])
     style.configure("Card.TFrame", background="white")
+    style.configure("CardSel.TFrame", background="#eff6ff")
+    style.configure("CardFailed.TFrame", background="#fef2f2")
+    style.configure("CardPassword.TFrame", background="#fffbeb")
+    style.configure("CardDone.TFrame", background="#f0fdf4")
     style.configure("Card.TLabel", background="white")
     style.configure("CardMuted.TLabel", background="white", foreground="#526276")
     style.configure("TEntry", padding=7, font=("Yu Gothic UI", 10))
@@ -35,14 +92,18 @@ def build_widgets(view):
     view.steps_frame.pack(fill="x", pady=(0, 8))
     view.step_labels = []
     for i, text in enumerate(("① 書庫を追加", "② 内容を確認", "③ 解凍する")):
-        lbl = tk.Label(view.steps_frame, text=text, bg="#f4f6f8", fg="#94a3b8",
+        lbl = tk.Label(view.steps_frame, text=text, bg="#f4f6f8", fg="#526276",
                        font=("Yu Gothic UI", 10, "bold"))
         lbl.pack(side="left")
         view.step_labels.append(lbl)
         if i < 2:
-            tk.Label(view.steps_frame, text="  →  ", bg="#f4f6f8", fg="#94a3b8",
+            tk.Label(view.steps_frame, text="  →  ", bg="#f4f6f8", fg="#526276",
                      font=("Yu Gothic UI", 10)).pack(side="left")
-    view.drop_area = tk.Frame(body, bg="white", highlightbackground="#b7c8dd", highlightthickness=1, pady=16)
+    # Scanning progress spinner (shown during listing phase)
+    view.scan_progress = ttk.Progressbar(view.steps_frame, mode="indeterminate", length=120)
+    view.scan_progress.pack(side="right")
+    view.scan_progress.pack_forget()  # hidden by default
+    view.drop_area = tk.Frame(body, bg="white", highlightbackground="#64748b", highlightthickness=1, pady=16)
     view.drop_area.pack(fill="x")
     view.drop_title = tk.Label(view.drop_area, text="ここにファイルをドロップ", bg="white", fg="#243447", font=("Yu Gothic UI", 14, "bold"))
     view.drop_title.pack(pady=(0, 6))
@@ -69,6 +130,7 @@ def build_widgets(view):
     ttk.Label(dest_row, text="保存先").pack(side="left", padx=(0, 10))
     view.dest_entry = ttk.Entry(dest_row, textvariable=view.dest_var)
     view.dest_entry.pack(side="left", fill="x", expand=True)
+    Tooltip(view.dest_entry, view.dest_var.get)
     view.dest_btn = ttk.Button(dest_row, text="変更", command=view.choose_dest)
     view.dest_btn.pack(side="left", padx=(8, 0))
     ttk.Label(view.options, text="書庫ごとのフォルダに保存。同名の場合は連番で作成します。", style="Muted.TLabel").pack(anchor="w", pady=(6, 8))
