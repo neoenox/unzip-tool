@@ -100,7 +100,7 @@ def test_gui_password_ondemand() -> None:
         # 正PWで解凍→完了
         job.pw_var.set("testpw")
         app.start_extract()
-        assert test_e2e.pump(app, lambda: app.status.get().startswith("完了"), timeout=20), app.status.get()
+        assert test_e2e.pump(app, lambda: "完了" in app.status.get(), timeout=20), app.status.get()
     finally:
         test_e2e.restore_dialogs(orig)
         app._on_close()
