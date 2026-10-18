@@ -8,6 +8,8 @@ from __future__ import annotations
 import ctypes
 import os
 
+import dnd_ole
+
 WM_DROPFILES = 0x0233
 GWL_WNDPROC = -4
 MAX_FILES = 64  # 取り出し上限 (シンプル版)
@@ -124,6 +126,8 @@ def enable_drop(widget) -> bool:
             return False
         _hooks[hwnd] = (old_proc, proc)
         shell32.DragAcceptFiles(hwnd, True)
+        # ドラッグ中の状態通知 (#29)。登録できなければ WM_DROPFILES のみで動く。
+        dnd_ole.register(hwnd, lambda paths: _pending.setdefault(hwnd, []).append(paths))
         return True
     except Exception:
         return False
@@ -145,6 +149,7 @@ def disable_drop(widget) -> None:
         return
     try:
         hwnd = widget.winfo_id()
+        dnd_ole.revoke(hwnd)
         hook = _hooks.pop(hwnd, None)
         if not hook:
             return
@@ -164,3 +169,13 @@ def disable_drop(widget) -> None:
             pass
     except Exception:
         pass
+
+
+def is_drag_over(widget) -> bool:
+    """ドラッグがこのウィンドウ上にあるか (メインスレッドのpollからのみ呼ぶ)。"""
+    if os.name != "nt":
+        return False
+    try:
+        return dnd_ole.is_drag_over(widget.winfo_id())
+    except Exception:
+        return False

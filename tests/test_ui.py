@@ -500,6 +500,51 @@ class UITests(unittest.TestCase):
             self.assertLessEqual(button.winfo_rooty() + button.winfo_height(),
                                  self.app.winfo_rooty() + self.app.winfo_height())
 
+    def test_drop_area_highlight_toggles(self):
+        """paint_drop_area がドロップ領域とラベルの色を切り替える (#29)。"""
+        from ui import (DROP_ACTIVE_BG, DROP_ACTIVE_BORDER, DROP_BG, DROP_BORDER,
+                        paint_drop_area)
+        paint_drop_area(self.app, True)
+        self.assertEqual(self.app.drop_area.cget('bg'), DROP_ACTIVE_BG)
+        self.assertEqual(self.app.drop_area.cget('highlightbackground'), DROP_ACTIVE_BORDER)
+        self.assertEqual(self.app.drop_title.cget('bg'), DROP_ACTIVE_BG)
+        self.assertEqual(self.app.dnd_hint.cget('bg'), DROP_ACTIVE_BG)
+        paint_drop_area(self.app, False)
+        self.assertEqual(self.app.drop_area.cget('bg'), DROP_BG)
+        self.assertEqual(self.app.drop_area.cget('highlightbackground'), DROP_BORDER)
+        self.assertEqual(self.app.drop_title.cget('bg'), DROP_BG)
+        self.assertEqual(self.app.dnd_hint.cget('bg'), DROP_BG)
+
+    def test_ole_drag_enter_and_leave_drive_highlight(self):
+        """OLE の DragEnter/DragLeave が poll 経由で強調に反映される (#29)。"""
+        import ctypes
+        import dnd
+        import dnd_ole
+        from ui import DROP_ACTIVE_BG, DROP_BG
+        target = dnd_ole._targets.get(self.app.winfo_id())
+        if target is None:
+            self.skipTest('OLE drop target not registered')
+        effect = ctypes.c_ulong(0)
+        pt = dnd_ole.POINT(0, 0)
+        self.app._drag_over = False
+        target._vtbl.DragEnter(target.pointer, None, 1, pt, ctypes.pointer(effect))
+        self.assertEqual(effect.value, 1)
+        # 実タイマー経由で poll させる (_poll_events を直接呼ぶと再スケジュールされる)
+        self.pump(lambda: self.app.drop_area.cget('bg') == DROP_ACTIVE_BG)
+        self.assertTrue(dnd.is_drag_over(self.app))
+        target._vtbl.DragLeave(target.pointer)
+        self.pump(lambda: self.app.drop_area.cget('bg') == DROP_BG)
+        self.assertFalse(dnd.is_drag_over(self.app))
+
+    def test_ole_drop_target_is_registered(self):
+        """RegisterDragDrop が成功している (#29)。失敗時は WM_DROPFILES にフォールバックする。"""
+        import sys as _sys
+        import dnd_ole
+        if _sys.platform != 'win32':
+            self.skipTest('Windows only')
+        self.assertTrue(self.app._dnd_enabled)
+        self.assertTrue(dnd_ole.has_target(self.app.winfo_id()))
+
 
 def test_pytest_capture_mode(request):
     """pytest の fd キャプチャは Windows Tcl 初期化と干渉する (Issue #55)。

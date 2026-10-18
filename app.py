@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from tkinter import filedialog, ttk
 
-from dnd import disable_drop, enable_drop, take_dropped_files
+from dnd import disable_drop, enable_drop, is_drag_over, take_dropped_files
 from jobs import BackgroundTask
-from ui import Tooltip, build_widgets
+from ui import Tooltip, build_widgets, paint_drop_area
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
@@ -145,6 +145,7 @@ class App(tk.Tk):
         self.archive_var.trace_add("write", self._archive_changed)
         self.dest_var.trace_add("write", self._dest_changed)
         self._dnd_enabled = enable_drop(self)
+        self._drag_over = False
         if not self._dnd_enabled:
             self.dnd_hint.configure(text="「ファイルを選ぶ」から追加できます")
         self._poll_id = self.after(50, self._poll_events)
@@ -783,6 +784,10 @@ class App(tk.Tk):
         if self._closed:
             return
         self._poll_update()
+        drag = is_drag_over(self)
+        if drag != self._drag_over:
+            self._drag_over = drag
+            paint_drop_area(self, drag)
         for paths in take_dropped_files(self):
             self.on_drop_files(paths)
         if self._extracting:
