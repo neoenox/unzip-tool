@@ -150,3 +150,24 @@ def build_widgets(view):
     view.status_label.pack(fill="x", pady=(8, 0))
     view.bind("<Configure>", view._resize_text)
 
+
+# ドロップ領域の見た目 (#29)。ドラッグ中だけ強調する。
+DROP_BG = "white"
+DROP_BORDER = "#64748b"
+DROP_ACTIVE_BG = "#e0f3fe"
+DROP_ACTIVE_BORDER = "#3b82f6"
+
+
+def paint_drop_area(view, active: bool) -> None:
+    """ドロップ領域の強調を切り替える。失敗しても動作は継続する。"""
+    bg = DROP_ACTIVE_BG if active else DROP_BG
+    border = DROP_ACTIVE_BORDER if active else DROP_BORDER
+    try:
+        view.drop_area.configure(bg=bg, highlightbackground=border)
+    except Exception:
+        return
+    for widget in (view.drop_title, view.dnd_hint):
+        try:
+            widget.configure(bg=bg)
+        except Exception:
+            pass
