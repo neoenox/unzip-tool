@@ -1,10 +1,17 @@
 ﻿param(
     [Parameter(Mandatory = $true)][string]$InstallerPath,
     [string]$ExecutablePath,
-    [string]$Version = '1.1.0'
+    [string]$Version
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+if (-not $Version) {
+    # 版数は version.py が唯一の出所。直書きするとリリース時に取り残される。
+    $versionFile = Join-Path $projectRoot 'version.py'
+    $match = [regex]::Match((Get-Content -LiteralPath $versionFile -Raw), "VERSION\s*=\s*'([^']+)'")
+    if (-not $match.Success) { throw "Could not read VERSION from $versionFile." }
+    $Version = $match.Groups[1].Value
+}
 $installer = (Get-Item -LiteralPath $InstallerPath -ErrorAction Stop).FullName
 if (-not $ExecutablePath) { $ExecutablePath = Join-Path $projectRoot 'dist\KantanKaiko.exe' }
 $expectedHash = (Get-FileHash -LiteralPath $ExecutablePath -Algorithm SHA256).Hash

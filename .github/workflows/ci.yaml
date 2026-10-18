@@ -26,6 +26,13 @@ jobs:
         run: python tests/run_all.py
       - name: Run tests under pytest
         run: python -m pytest --tb=short -q
+      - name: Resolve application version
+        shell: pwsh
+        run: |
+          $version = python -c "from version import VERSION; print(VERSION)"
+          if (-not $version) { throw "Could not read VERSION from version.py." }
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Output "Building installer for version $version"
       - name: Build executable
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko --icon assets/icon.ico --add-data "assets/icon.ico;assets" app.py
       - name: Verify RAR in distribution executable
@@ -34,13 +41,18 @@ jobs:
           if (-not $unrar) { throw "UnRAR is required for the distribution check." }
           python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar $unrar
       - name: Build installer
-        run: ./scripts/build-installer.ps1 -Version 1.1.0
+        run: ./scripts/build-installer.ps1 -Version $env:APP_VERSION
       - name: Test installer
-        run: ./scripts/test-installer.ps1 -InstallerPath dist/KantanKaiko-Setup-1.1.0.exe -Version 1.1.0
+        run: ./scripts/test-installer.ps1 -InstallerPath "dist/KantanKaiko-Setup-$env:APP_VERSION.exe" -Version $env:APP_VERSION
+      - name: Verify installer artifact
+        shell: pwsh
+        run: |
+          $path = "dist/KantanKaiko-Setup-$env:APP_VERSION.exe"
+          if (-not (Test-Path $path)) { throw "Expected installer $path was not created." }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: KantanKaiko-windows
           path: |
             dist/KantanKaiko.exe
-            dist/KantanKaiko-Setup-1.1.0.exe
+            dist/KantanKaiko-Setup-${{ env.APP_VERSION }}.exe

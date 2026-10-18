@@ -1,9 +1,9 @@
 ﻿; Build with scripts/build-installer.ps1. The application remains per-user.
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #error AppVersion is not defined. Build with scripts/build-installer.ps1, which passes /DAppVersion=<version.py>.
 #endif
 #ifndef NumericVersion
-  #define NumericVersion "1.1.0"
+  #error NumericVersion is not defined. Build with scripts/build-installer.ps1, which passes /DNumericVersion=<version.py>.
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\KantanKaiko.exe"
