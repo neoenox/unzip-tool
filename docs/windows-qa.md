@@ -34,3 +34,23 @@ Not verified for this release (no evidence, do not treat as passing):
 - No interactive Explorer check was performed for `v1.1.0`: Open With → かんたん解凍, real drag-and-drop from Explorer, and the drag-over highlight (added in #29, after this tag) were **not** exercised by hand. The real Explorer drop path cannot be synthesized because it uses OLE shared memory.
 - The downloaded `v1.1.0` executables were not run on a clean Windows machine as part of this verification; only the CI run and the Release asset metadata above were checked.
 - #29's OLE `IDropTarget` drag-over highlight was merged after this tag and is therefore not part of `v1.1.0` at all.
+
+## 2026-10-18 v1.2.0 release verification
+
+What was actually verified for `v1.2.0` (tag points at `9a34a94`, released 2026-10-18T08:34:27Z):
+
+- Included changes: #15/#11 (UnRAR policy docs and list-debounce regression test), #29 (OLE drag-over highlight), #24 (shortcuts, settings persistence, in-app help), #61 (version single source).
+- Windows CI was green on the merged main commit `9a34a94` (run `39111824089`) and on the PR branch (`cdf8ec8`, run `39111583699`). The PR run built the installer, exercised install/reinstall/uninstall, and printed `PASS install, shortcut, version, reinstall, uninstall, and preservation of user files` for version `1.2.0`.
+- The tag-triggered release workflow run `39111834857` (workflow `build-exe`, event `push`, branch `v1.2.0`, commit `9a34a94`) completed with `success`.
+- GitHub Release `v1.2.0` is published (not draft, not prerelease) with exactly two uploaded assets:
+  - `KantanKaiko.exe` — 14,674,094 bytes
+  - `KantanKaiko-Setup-1.2.0.exe` — 16,425,265 bytes
+- Local pre-release checks used a dedicated settings directory (`KANTAN_SETTINGS_DIR`): `python -m pytest -q` → 130 passed, and `python tests/run_all.py` passed every suite.
+- Version single-source check on this machine: `./scripts/build-installer.ps1` with no `-Version` produced `dist/KantanKaiko-Setup-1.2.0.exe` from `version.py`, and running Inno Setup without the version defines aborted with `AppVersion is not defined.` instead of silently building an old version. The generated installer was deleted after the check; the machine already had an installation, so `test-installer.ps1` was intentionally not run locally (CI performs it).
+
+Not verified for this release (no evidence, do not treat as passing):
+
+- No interactive Explorer check was performed for `v1.2.0`: Open With → かんたん解凍, a real drag-and-drop from Explorer, and the drag-over highlight from #29 were **not** exercised by hand. The real Explorer drop path cannot be synthesized because it uses OLE shared memory.
+- The downloaded `v1.2.0` executables were not run on a clean Windows machine; only the CI runs and the Release asset metadata above were checked.
+- `%APPDATA%\KantanKaiko\settings.json` restoration (window position and last destination) was verified by automated Tk tests, not by restarting a real installed build by hand.
+
