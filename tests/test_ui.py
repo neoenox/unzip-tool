@@ -244,6 +244,15 @@ class UITests(unittest.TestCase):
         self.assertEqual(len(self.app.jobs), 1)
         self.assertIs(self.app.selected, self.app.jobs[0])
 
+    def test_remove_last_card_resets_status(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        self.assertNotEqual(self.app.status.get(), 'ファイルを選んで、解凍するだけ。')
+        self.app.remove_job(self.app.jobs[0])
+        self.app.update()
+        self.assertEqual(self.app.jobs, [])
+        self.assertEqual(self.app.status.get(), 'ファイルを選んで、解凍するだけ。')
+
     def test_retry_failed_job(self):
         broken = self.base / 'broken.zip'
         broken.write_bytes(b'not a zip')
