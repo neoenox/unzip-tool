@@ -47,6 +47,7 @@ def short_display_name(name: str, limit: int = 32) -> str:
     return stem[:limit - len(ext) - 2] + "…" + dot + ext
 
 TITLE = "かんたん解凍"
+EMPTY_STATUS = "ファイルを選んで、解凍するだけ。"
 FILTERS = [
     ("対応アーカイブ", "*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
     ("ZIP", "*.zip"),
@@ -145,7 +146,7 @@ class App(tk.Tk):
         self._extract_total = 0
         self.archive_var = tk.StringVar()
         self.dest_var = tk.StringVar()
-        self.status = tk.StringVar(value="ファイルを選んで、解凍するだけ。")
+        self.status = tk.StringVar(value=EMPTY_STATUS)
         build_widgets(self)
         self.archive_var.trace_add("write", self._archive_changed)
         self.dest_var.trace_add("write", self._dest_changed)
@@ -460,6 +461,7 @@ class App(tk.Tk):
                 self.dest_var.set("")
                 self._syncing = False
         if not self.jobs:
+            self.status.set(EMPTY_STATUS)
             self._empty_layout()
         else:
             self._update_buttons()
@@ -1077,7 +1079,7 @@ class App(tk.Tk):
         self.dest_var.set("")
         self._syncing = False
         self.drop_title.configure(text="ここにファイルをドロップ")
-        self.status.set("ファイルを選んで、解凍するだけ。")
+        self.status.set(EMPTY_STATUS)
         self._empty_layout()
 
     def _on_close(self):
