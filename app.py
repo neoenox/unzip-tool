@@ -13,7 +13,8 @@ from tkinter import filedialog, ttk
 
 from dnd import disable_drop, enable_drop, is_drag_over, take_dropped_files
 from jobs import BackgroundTask
-from ui import Tooltip, build_widgets, paint_drop_area
+from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
+from ui import Tooltip, build_help_window, build_widgets, paint_drop_area
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
@@ -136,7 +137,11 @@ class App(tk.Tk):
         self._update_url = None
         self._pending = []
         self._password_after = None
-        self._custom_parent = None
+        self.help_window = None
+        # 前回のウィンドウ位置と保存先を復元する (#24)
+        self._settings = Settings.load()
+        self._custom_parent = self._restore_dest()
+        self._restore_geometry()
         self._extract_total = 0
         self.archive_var = tk.StringVar()
         self.dest_var = tk.StringVar()
@@ -154,23 +159,25 @@ class App(tk.Tk):
         self._empty_layout()
 
     def _on_key(self, event):
-        """カード操作のキーボード対応 (#44)。入力欄・ダイアログ内では発火させない。"""
+        """カード操作のキーボード対応 (#44, #24)。入力欄・ツリー内では素の操作を優先する。"""
         try:
             widget = event.widget
             if widget.winfo_toplevel() is not self:
                 return
         except Exception:
             return
-        if isinstance(widget, (tk.Entry, ttk.Entry, tk.Text, ttk.Treeview,
-                               tk.Button, ttk.Button, tk.Listbox, ttk.Combobox)):
+        if isinstance(widget, (tk.Entry, ttk.Entry, tk.Text, tk.Listbox, ttk.Combobox,
+                               ttk.Treeview)):
             return
         keysym = event.keysym
-        if keysym == "Delete":
+        handled = True
+        if keysym == "F1":
+            self.show_help()
+        elif keysym == "Escape":
+            handled = self.hide_help()
+        elif keysym == "Delete":
             if self.selected and not self.busy:
                 self.remove_job(self.selected)
-        elif keysym == "Return":
-            if not self.busy:
-                self.start_extract()
         elif keysym == "Up":
             self._move_selection(-1)
         elif keysym == "Down":
@@ -178,6 +185,109 @@ class App(tk.Tk):
         elif keysym.lower() == "o" and (event.state & 0x4):
             if not self.busy:
                 self.choose_archive()
+        elif keysym == "Return":
+            # ボタンにフォーカスがあるときは、そのボタンの既定動作を優先する
+            if isinstance(widget, (tk.Button, ttk.Button, ttk.Checkbutton)) or self.busy:
+                handled = False
+            else:
+                self.start_extract()
+        else:
+            handled = False
+        # 処理したキーは他のバインドへ流さない
+        return "break" if handled else None
+
+    def _restore_dest(self):
+        """前回の保存先を引き継ぐ (#24)。消えているフォルダは無視する。"""
+        saved = self._settings.last_dest
+        if not saved:
+            return None
+        try:
+            path = Path(saved)
+            if path.is_dir():
+                return path
+        except OSError:
+            pass
+        return None
+
+    def _restore_geometry(self):
+        """保存されたウィンドウ位置を復元する。画面外の値は使わない (#24)。"""
+        saved = self._settings.geometry
+        if not valid_geometry(saved):
+            return
+        area = virtual_screen()
+        if area is not None and not placeable_geometry(saved, area):
+            return
+        try:
+            self.geometry(saved)
+        except Exception:
+            pass
+
+    def _remember_geometry(self):
+        """表示中のウィンドウ位置だけを記録する。最小化・非表示では触らない。"""
+        try:
+            if self.state() != "normal" or not self.winfo_viewable():
+                return
+            geometry = self.winfo_geometry()
+        except Exception:
+            return
+        if not valid_geometry(geometry) or geometry == self._settings.geometry:
+            return
+        self._settings.geometry = geometry
+        self._save_settings()
+
+    def _remember_dest(self, folder):
+        """保存先として使ったフォルダを記録する。存在しないパスは覚えない (#24)。"""
+        try:
+            path = Path(str(folder))
+            if not path.is_dir():
+                return
+            text = str(path)
+        except (OSError, ValueError):
+            return
+        if text == self._settings.last_dest:
+            return
+        self._settings.last_dest = text
+        self._save_settings()
+
+    def _save_settings(self):
+        try:
+            self._settings.save()
+        except Exception:
+            pass  # 設定は書けなくても操作を止めない
+
+    def show_help(self) -> bool:
+        """対応形式・制限・ショートカットのアプリ内案内 (#24)。"""
+        window = self.help_window
+        try:
+            if window is not None and window.winfo_exists():
+                window.deiconify()
+                window.lift()
+                window.focus_set()
+                return True
+        except Exception:
+            pass
+        try:
+            self.help_window = build_help_window(self)
+        except Exception:
+            self.help_window = None
+            return False
+        return True
+
+    def hide_help(self) -> bool:
+        """ヘルプ窓を閉じてアプリ本体へフォーカスを戻す。開いていなければ False。"""
+        window = self.help_window
+        self.help_window = None
+        if window is None:
+            return False
+        try:
+            window.destroy()
+        except Exception:
+            pass
+        try:
+            self.focus_set()
+        except Exception:
+            pass
+        return True
 
     def _move_selection(self, delta: int) -> None:
         if not self.jobs:
@@ -415,6 +525,7 @@ class App(tk.Tk):
         if not self._syncing and not self.busy and self.selected and self.dest_var.get().strip():
             self.selected.dest = Path(self.dest_var.get().strip().strip('"'))
             self.selected.dest_customized = True
+            self._remember_dest(self.selected.dest.parent)
             self._sync_card_chrome(self.selected)
 
     def _show_scanning(self, job):
@@ -498,6 +609,7 @@ class App(tk.Tk):
         if folder:
             job.dest = Path(folder) / default_dest_for(job.archive).name
             job.dest_customized = True
+            self._remember_dest(job.dest.parent)
             self._sync_card_chrome(job)
             if self.selected is job:
                 self.select_job(job)
@@ -508,6 +620,7 @@ class App(tk.Tk):
         folder = filedialog.askdirectory(title="保存先の親フォルダを選ぶ")
         if folder:
             self._custom_parent = Path(folder)
+            self._remember_dest(self._custom_parent)
             for job in self.jobs:
                 if job.state != "done" and not job.dest_customized:
                     job.dest = self._custom_parent / default_dest_for(job.archive).name
@@ -526,6 +639,7 @@ class App(tk.Tk):
             path = Path(raw.strip().strip('"'))
             if path.is_dir():
                 self._custom_parent = path
+                self._remember_dest(path)
                 for job in self.jobs:
                     if job.state != "done" and not job.dest_customized:
                         job.dest = path / default_dest_for(job.archive).name
@@ -968,6 +1082,7 @@ class App(tk.Tk):
 
     def _on_close(self):
         self._closed = True
+        self._remember_geometry()
         if self._poll_id:
             self.after_cancel(self._poll_id)
         if self._password_after:
@@ -993,6 +1108,13 @@ class App(tk.Tk):
                     pass  # closing the window must not depend on worker cleanup
         if self._updating:
             self._updating.cancel()
+        window = self.help_window
+        self.help_window = None
+        if window is not None:
+            try:
+                window.destroy()
+            except Exception:
+                pass
         disable_drop(self)
         self.destroy()
 

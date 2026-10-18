@@ -545,6 +545,172 @@ class UITests(unittest.TestCase):
         self.assertTrue(self.app._dnd_enabled)
         self.assertTrue(dnd_ole.has_target(self.app.winfo_id()))
 
+    # --- #24 ショートカット・ヘルプ・設定の記憶 ---
+
+    def key(self, sym, state=0, widget=None):
+        from types import SimpleNamespace
+        return self.app._on_key(SimpleNamespace(widget=widget or self.app, keysym=sym, state=state))
+
+    def test_help_window_shows_formats_limits_and_shortcuts(self):
+        self.assertTrue(self.app.show_help())
+        self.app.update()
+        window = self.app.help_window
+        self.assertTrue(window.winfo_exists())
+        text = ' '.join(widget_texts(window))
+        for expected in ('対応形式', '分割アーカイブ', 'AES', '.tar.xz', 'Ctrl+O', 'F1',
+                         'settings.json'):
+            self.assertIn(expected, text)
+        # モーダルにしない（grab しない）
+        self.assertIsNone(window.grab_current())
+
+    def test_help_window_height_clamps_to_screen(self):
+        from ui import HELP_MIN_HEIGHT, help_window_height
+        self.assertEqual(help_window_height(800, 200, 1080), 800)  # 収まるならそのまま
+        self.assertEqual(help_window_height(800, 200, 768), 528)  # 画面内に詰める
+        self.assertEqual(help_window_height(800, 700, 768), HELP_MIN_HEIGHT)
+
+    def test_help_window_fits_on_screen(self):
+        self.app.deiconify()
+        self.app.update()
+        self.app.show_help()
+        self.app.update()
+        window = self.app.help_window
+        bottom = window.winfo_rooty() + max(window.winfo_height(), window.winfo_reqheight())
+        self.assertLessEqual(bottom, self.app.winfo_screenheight())
+
+    def test_help_matches_supported_suffixes(self):
+        from ui import HELP_SECTIONS
+        from unzipper import SUPPORTED_SUFFIXES
+        text = ' '.join(line for _heading, lines in HELP_SECTIONS for line in lines)
+        for suffix in SUPPORTED_SUFFIXES:
+            self.assertIn(suffix, text, f'{suffix} がヘルプに無い')
+
+    def test_help_shortcuts_open_and_close_one_window(self):
+        self.assertIsNone(self.app.help_window)
+        self.assertEqual(self.key('F1'), 'break')
+        self.app.update()
+        window = self.app.help_window
+        self.assertEqual(self.key('F1'), 'break')
+        self.assertIs(self.app.help_window, window)  # 2枚目は開かない
+        self.assertEqual(self.key('Escape'), 'break')
+        self.app.update()
+        self.assertFalse(window.winfo_exists())
+        self.assertIsNone(self.app.help_window)
+        self.assertIsNone(self.key('Escape'))  # 開いていないときは何もしない
+
+    def test_help_close_button_works(self):
+        from tkinter import ttk
+        self.app.show_help()
+        self.app.update()
+        window = self.app.help_window
+        close = next(w for w in walk_widgets(window)
+                     if isinstance(w, ttk.Button) and w.cget('text') == '閉じる')
+        close.invoke()
+        self.app.update()
+        self.assertFalse(window.winfo_exists())
+        self.assertIsNone(self.app.help_window)
+
+    def test_ctrl_o_adds_files_only_with_control(self):
+        with patch('app.filedialog.askopenfilenames', return_value=[]) as picker:
+            self.key('o', state=0)
+        picker.assert_not_called()
+        with patch('app.filedialog.askopenfilenames', return_value=[]) as picker:
+            self.assertEqual(self.key('o', state=0x4), 'break')
+        picker.assert_called_once()
+
+    def test_enter_on_a_button_keeps_native_behaviour(self):
+        from tkinter import ttk
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        button = ttk.Button(self.app, text='x', command=lambda: None)
+        self.addCleanup(button.destroy)
+        self.assertIsNone(self.key('Return', widget=button))
+        self.assertFalse(self.app.busy)
+
+    def test_shortcuts_do_not_fire_while_typing(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        entry = self.app.jobs[0].pw_entry
+        self.assertIsNone(self.key('F1', widget=entry))
+        self.assertIsNone(self.app.help_window)
+        self.assertIsNone(self.key('Delete', widget=entry))
+        self.assertEqual(len(self.app.jobs), 1)
+
+    def test_last_destination_is_remembered(self):
+        import settings
+        chosen = self.base / 'remembered'
+        chosen.mkdir()
+        with patch('app.filedialog.askdirectory', return_value=str(chosen)):
+            self.app.choose_dest()
+        self.app.update()
+        self.assertEqual(settings.Settings.load().last_dest, str(chosen))
+
+    def test_missing_saved_destination_is_ignored(self):
+        import settings
+        settings.Settings(last_dest=str(self.base / 'gone')).save()
+        app = App()
+        app.update()
+        self.addCleanup(app._on_close)
+        self.assertIsNone(app._custom_parent)
+        self.assertEqual(app.dest_var.get(), '元ファイルと同じ場所')
+
+    def test_restored_destination_is_used_for_new_jobs(self):
+        import settings
+        previous = self.base / 'previous'
+        previous.mkdir()
+        settings.Settings(last_dest=str(previous)).save()
+        app = App()
+        app.update()
+        self.addCleanup(app._on_close)
+        self.assertEqual(app._custom_parent, previous)
+        app.on_drop_files([str(self.archive('one.zip'))])
+        self.assertEqual(app.jobs[0].dest.parent, previous)
+
+    def test_close_remembers_window_geometry(self):
+        import settings
+        app = App()
+        app.geometry('820x700+40+40')
+        app.update()
+        app._on_close()
+        self.assertTrue(settings.Settings.load().geometry.startswith('820x700'))
+
+    def test_hidden_close_does_not_overwrite_window_geometry(self):
+        import settings
+        settings.Settings(geometry='900x800+10+10').save()
+        app = App()
+        app.withdraw()
+        app.update()
+        app._on_close()
+        self.assertEqual(settings.Settings.load().geometry, '900x800+10+10')
+
+    def test_offscreen_saved_geometry_is_not_restored(self):
+        import settings
+        if settings.virtual_screen() is None:
+            self.skipTest('virtual screen size is unavailable')
+        settings.Settings(geometry='820x700+9999+9999').save()
+        app = App()
+        app.update()
+        self.addCleanup(app._on_close)
+        self.assertNotIn('9999', app.winfo_geometry())
+
+
+def walk_widgets(widget):
+    yield widget
+    for child in widget.winfo_children():
+        yield from walk_widgets(child)
+
+
+def widget_texts(widget):
+    texts = []
+    for item in walk_widgets(widget):
+        try:
+            text = item.cget('text')
+        except Exception:
+            continue
+        if text:
+            texts.append(str(text))
+    return texts
+
 
 def test_pytest_capture_mode(request):
     """pytest の fd キャプチャは Windows Tcl 初期化と干渉する (Issue #55)。

@@ -86,6 +86,9 @@ def build_widgets(view):
     view.clear_btn.pack(side="right")
     view.update_btn = ttk.Button(header, text='更新を確認', command=view.check_updates)
     view.update_btn.pack(side='right', padx=(0, 8))
+    view.help_btn = ttk.Button(header, text="ヘルプ", command=view.show_help)
+    view.help_btn.pack(side='right', padx=(0, 8))
+    Tooltip(view.help_btn, lambda: "対応形式・制限・ショートカット (F1)")
     view.update_text = tk.StringVar(value=f'ZIP・7z・RAR・TAR  /  v{VERSION}')
     ttk.Label(body, textvariable=view.update_text, style='Muted.TLabel').pack(anchor='w', pady=(4, 8))
     view.steps_frame = ttk.Frame(body)
@@ -171,3 +174,144 @@ def paint_drop_area(view, active: bool) -> None:
             widget.configure(bg=bg)
         except Exception:
             pass
+
+
+# アプリ内ヘルプ (#24)。README の「対応形式」「仕様メモ」と同じ内容を保つこと。
+# 形式の一覧が実際の対応拡張子とずれていないかは tests/test_ui.py が検証する。
+HELP_TITLE = "かんたん解凍の使い方"
+HELP_WRAP = 460
+HELP_MIN_WIDTH = 500
+HELP_MAX_WIDTH = 720
+HELP_MIN_HEIGHT = 320
+HELP_MARGIN = 40
+HELP_SECTIONS = (
+    ("対応形式", (
+        ".zip — パスワード対応",
+        ".7z — パスワード対応",
+        ".rar — RAR4/5、パスワード対応（要UnRAR）",
+        ".tar / .tar.gz / .tgz / .tar.bz2 / .tbz / .tar.xz / .txz",
+    )),
+    ("できないこと", (
+        "分割アーカイブ（.part1.rar など）と自己解凍形式（.exe）は開けません。",
+        "AES暗号化ZIPは開けません（対応するのは標準のZipCryptoのみ）。",
+        "RARを開くにはUnRARが必要です（WinRAR、tools\\UnRAR.exe、環境変数KANTAN_UNRAR）。",
+    )),
+    ("保存先の決まり", (
+        "書庫ごとに「書庫名」フォルダを作って保存します。",
+        "同名がある場合は「書庫名 (2)」のように連番になり、既存ファイルは上書きしません。",
+        "「変更」やフォルダのドロップは全未完了書庫に効き、カードで個別に変えた書庫は上書きしません。",
+    )),
+    ("ショートカット", (
+        "Enter — 解凍する（実行中は無効）",
+        "Delete — 選択中の書庫を一覧から外す（ファイル自体は消しません）",
+        "Ctrl+O — 書庫を追加",
+        "↑ / ↓ — 書庫の選択を移動",
+        "F1 — このヘルプを開く",
+        "Esc — このヘルプを閉じる",
+    )),
+    ("設定の記憶", (
+        "前回の保存先とウィンドウ位置を %APPDATA%\\KantanKaiko\\settings.json に記録し、次回起動時に復元します。",
+    )),
+)
+
+
+def build_help_window(view):
+    """ヘルプ窓を組み立てて返す。モーダルにせず、既存の1枚だけを使う (#24)。
+
+    位置と大きさは mapping 前に決める（表示後に動かすと 0,0 のままになる環境がある）。
+    本文は canvas の子にして、画面に収まらないときだけスクロールさせる。
+    """
+    window = tk.Toplevel(view)
+    window.title(f"ヘルプ — {view.title()}")
+    window.configure(bg="#f4f6f8")
+    window.transient(view)
+    try:
+        window.withdraw()
+    except Exception:
+        pass
+    try:
+        window.iconbitmap(view.iconbitmap())
+    except Exception:
+        pass
+
+    header = ttk.Frame(window, padding=(20, 18, 20, 6))
+    header.pack(side="top", fill="x")
+    ttk.Label(header, text=HELP_TITLE, style="Title.TLabel").pack(anchor="w")
+    footer = ttk.Frame(window, padding=(20, 10, 20, 16))
+    footer.pack(side="bottom", fill="x")
+    close_btn = ttk.Button(footer, text="閉じる", command=view.hide_help)
+    close_btn.pack(anchor="e")
+
+    holder = ttk.Frame(window)
+    holder.pack(fill="both", expand=True)
+    canvas = tk.Canvas(holder, bg="#f4f6f8", highlightthickness=0)
+    scroll = ttk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scroll.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    # 本文は canvas の子にしないと切り取られない（canvas が clip する）
+    content = ttk.Frame(canvas, padding=(20, 6, 20, 0))
+    _fill_help_sections(content)
+    item = canvas.create_window(0, 0, window=content, anchor="nw")
+    content.bind("<Configure>",
+                 lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind("<Configure>", lambda e: canvas.itemconfigure(item, width=e.width))
+    canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(-int(e.delta / 120), "units"))
+
+    try:
+        window.update_idletasks()
+        content_height = content.winfo_reqheight()
+        width = max(HELP_MIN_WIDTH, content.winfo_reqwidth())
+        chrome = header.winfo_reqheight() + footer.winfo_reqheight()
+        top = _help_top(view)
+        allowed = help_window_height(chrome + content_height, top, view.winfo_screenheight())
+        if chrome + content_height > allowed:
+            canvas_height = max(140, allowed - chrome)
+            # canvas より先に詰めないと、expand する canvas が幅を全部取ってしまう
+            scroll.pack(side="right", fill="y", before=canvas)
+            width += scroll.winfo_reqwidth()
+        else:
+            canvas_height = content_height  # 収まるのでスクロールバーは出さない
+            canvas.configure(yscrollcommand="")
+        canvas.configure(width=width, height=canvas_height,
+                         scrollregion=(0, 0, width, content_height))
+        window.geometry(f"{width}x{chrome + canvas_height}+{max(0, _help_left(view, width))}+{top}")
+        window.minsize(min(width, HELP_MAX_WIDTH), min(HELP_MIN_HEIGHT, chrome + canvas_height))
+    except Exception:
+        pass
+    try:
+        window.deiconify()
+        close_btn.focus_set()
+    except Exception:
+        pass
+    window.bind("<Escape>", lambda _e: view.hide_help())
+    window.bind("<F1>", lambda _e: "break")
+    return window
+
+
+def _fill_help_sections(parent) -> None:
+    for index, (heading, lines) in enumerate(HELP_SECTIONS):
+        ttk.Label(parent, text=heading, font=("Yu Gothic UI", 11, "bold")).pack(
+            anchor="w", pady=(16 if index == 0 else 14, 4))
+        for line in lines:
+            ttk.Label(parent, text=f"・{line}", style="Muted.TLabel",
+                      wraplength=HELP_WRAP, justify="left").pack(anchor="w", pady=(0, 2))
+
+
+def help_window_height(wanted: int, top: int, screen_height: int) -> int:
+    """ヘルプ窓の高さ。小さい画面では画面内に収まる高さまで詰める (#24)。"""
+    return max(HELP_MIN_HEIGHT, min(wanted, screen_height - top - HELP_MARGIN))
+
+
+def _help_top(view) -> int:
+    try:
+        return max(0, view.winfo_rooty() + 48)
+    except Exception:
+        return 0
+
+
+def _help_left(view, width: int) -> int:
+    try:
+        return view.winfo_rootx() + max(0, (view.winfo_width() - width) // 2)
+    except Exception:
+        return 0
+
