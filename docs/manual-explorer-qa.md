@@ -27,6 +27,16 @@
    | `secret.zip` | ZipCrypto のパスワード付き。パスワードは `kantan` |
    | `test.7z` / `test.rar` | 同じ内容（RARはUnRAR導入済みの端末で確認） |
 
+   上の書庫は次のコマンドで作れる。
+
+   ```powershell
+   python scripts/make_qa_archives.py
+   # 既定の出力先: %USERPROFILE%\kk-qa\archives
+   ```
+
+   7-Zip が無い場合は `secret.zip`、WinRAR が無い場合は `test.rar` を作れず警告が出る。
+   手元で用意する場合も、上の表の名前と内容に合わせる。
+
 4. 保存先に空のフォルダを1つ用意する（例: `%USERPROFILE%\kk-qa\out`）。
 5. 既存のインストールがある場合は、版数と場所を控える（上書きされるため）。
 6. `%APPDATA%\KantanKaiko\settings.json` がある場合はバックアップする（検証後に戻す）。
