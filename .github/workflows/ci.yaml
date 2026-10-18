@@ -56,3 +56,20 @@ jobs:
           path: |
             dist/KantanKaiko.exe
             dist/KantanKaiko-Setup-${{ env.APP_VERSION }}.exe
+
+  tests-newer-python:
+    # exe は 3.11 でビルドする。テストだけ新しい版でも通ることを確認する。
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+      - name: Install UnRAR for format tests
+        shell: pwsh
+        run: ./scripts/ci-install-unrar.ps1
+      - name: Run tests under pytest
+        run: python -m pytest --tb=short -q
