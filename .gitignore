@@ -9,5 +9,11 @@ venv/
 dist/
 build/
 *.spec
-# UnRARバイナリ置き場 (各自で用意、コミットしない)
-tools/
+# UnRAR方針(a): バイナリはgit管理外。各自・CIが調達し、コミットしない。
+# 置き場所と手順は tools/README.md と README.md「RARに必要なもの」を参照。
+# ポリシ文書 (README.md / license.txt) を管理するため、tools/ 全体ではなく
+# バイナリ等のみを無視する。
+tools/UnRAR.exe
+tools/unrar.exe
+tools/*.tmp
+tools/*.rar

@@ -16,10 +16,13 @@ Windows向けのシンプルな解凍ソフト。zip/tarは依存なし、rarの
 いずれか1つ。無ければrar選択時に案内が出る。
 
 1. WinRARをインストール (UnRAR.exe を自動検出)
-2. `tools/UnRAR.exe` をexeと同じディレクトリの `tools/` に置く（同梱しない）
+2. `tools/UnRAR.exe` を置く（exeと同じ場所、またはリポジトリ直下。同梱しない）
 3. 環境変数 `KANTAN_UNRAR` にUnRAR.exeのパスを指定
 
 UnRARはフリーウェア ([rarlab](https://www.rarlab.com/rar_add.htm) のUnRAR for Windows)。
+管理方針は (a) バイナリはgit管理外＋各自/CI調達（`tools/UnRAR.exe` はコミットしない）。
+入手手順と検出順は [tools/README.md](tools/README.md)、ライセンス全文は
+[tools/license.txt](tools/license.txt)。本リポジトリはUnRARのバイナリを配布しない。
 
 ## 使い方
 
@@ -42,7 +45,8 @@ python app.py
 
 ## exe化
 
-ローカル `build.bat` と GitHub Actions は同じPyInstaller引数でビルドします。`KantanKaiko.spec` は自動生成・Git管理対象外であり、製品のビルドには使いません。UnRARは再配布方針を決めるまでexeに埋め込みません（Issue #15）。
+ローカル `build.bat` と GitHub Actions は同じPyInstaller引数でビルドします。`KantanKaiko.spec` は自動生成・Git管理対象外であり、製品のビルドには使いません。UnRARは方針(a)（バイナリはgit管理外・各自/CI調達）によりexeに同梱しません。
+詳細は [tools/README.md](tools/README.md)。
 
 ```bat
 build.bat
