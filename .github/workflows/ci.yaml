@@ -27,7 +27,7 @@ jobs:
       - name: Run tests under pytest
         run: python -m pytest --tb=short -q
       - name: Build executable
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko --icon assets/icon.ico --add-data "assets/icon.ico;assets" app.py
       - name: Verify RAR in distribution executable
         run: |
           $unrar = python -c "from unzipper import find_unrar_tool; print(find_unrar_tool() or '')"

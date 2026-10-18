@@ -36,7 +36,7 @@ jobs:
       - name: Test
         run: python tests/run_all.py
       - name: Build exe
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko --icon assets/icon.ico --add-data "assets/icon.ico;assets" app.py
       - name: Verify release executable
         shell: pwsh
         run: |
