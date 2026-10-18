@@ -94,3 +94,14 @@ Not verified for this release (no evidence, do not treat as passing):
 
 Observation filed as an issue instead of being fixed here: with a single card in the list, `Delete` removes the card as expected, but the bottom status line keeps the stale text `3 件 / 解凍できます。` while the list is already showing its empty state. `remove_job()` calls `_empty_layout()` without resetting `self.status`, unlike `clear_jobs()`. This is filed as #72; it is display-only and no file is deleted.
 
+## 2026-10-18 v1.2.1 release verification
+
+- The tag `v1.2.1` points at `a853b5d` (`chore: v1.2.1 を準備する`), whose only changes were `version.py` (`1.2.0` → `1.2.1`) and the version references in the README. The workflow's `Verify release commit is on main` and `Verify application version matches release tag` steps passed.
+- The release run `39133812043` succeeded and produced no check-run annotations at all. The Node24 action majors moved in #64 — `actions/checkout@v7`, `actions/setup-python@v7`, `actions/upload-artifact@v7`, and `softprops/action-gh-release@v3` — therefore ran at a tag for the first time without the Node20 deprecation warning that the v1.2.0 section left open. `Test installer` and `Verify RAR in distribution executable` passed as before.
+- The Release `v1.2.1` is published (neither draft nor pre-release) with two assets:
+  - `KantanKaiko.exe` — 14,672,727 bytes, SHA256 `9d288091901b4fabf13323a12f6dc130646c9638af40938e8bbbe16f54de0bbf`
+  - `KantanKaiko-Setup-1.2.1.exe` — 16,423,550 bytes, SHA256 `910538414a8abc502b88e83adc588b1a37f6c29dc504d290f40fe66ee4548579`
+- The downloaded installer's SHA256 matched the asset digest, and installing it silently registered `DisplayVersion 1.2.1`. The installed `KantanKaiko.exe` was 14,672,727 bytes with SHA256 `9d288091…4de0bbf`, identical to the released asset. `tools\UnRAR.exe`, the Start Menu shortcut, the `KantanKaiko.Archive` Open With registration, and `%APPDATA%\KantanKaiko\settings.json` all survived the upgrade.
+- #72 is fixed in the shipped build. Launching the installed 1.2.1 with `plain.zip` showed the header `ZIP・7z・RAR・TAR / v1.2.1` and `3 件 / 解凍できます。`. Pressing `Delete` returned the list to its empty state *and* the bottom line to `ファイルを選んで、解凍するだけ。`, where 1.2.0 left the stale `3 件 / 解凍できます。` behind (see the v1.2.0 section above). A second `Delete` did nothing, and closing the window exited with code 0 and left `settings.json` valid.
+- The window-only pixel captures used for this check were deleted after inspection.
+
