@@ -103,7 +103,7 @@ python tests/run_all.py
 ```
 
 安全性、キャンセル、異常終了、7z、RARと、実物のAppウィンドウで複数書庫・パスワード再試行・GUI解凍・同一プロセス内DnD・別プロセス通知の堅牢性を検証する。RARの実展開テストはUnRAR未検出時にスキップする。
-真のExplorerドロップ配送はOLE共有メモリ経由のため合成不可。初回は手で1回試すこと。
+真のExplorerドロップ配送や「プログラムから開く」はOLE共有メモリとシェル登録に依存するため自動化できない。人が確認する手順は [docs/manual-explorer-qa.md](docs/manual-explorer-qa.md) にまとめてある。
 
 ## 仕様メモ
 

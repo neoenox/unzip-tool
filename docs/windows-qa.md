@@ -13,10 +13,12 @@
 ## Before each release
 
 1. Wait for the PR and main Windows checks to pass, then use the reviewed main commit.
-2. Create a new annotated `vMAJOR.MINOR.PATCH` tag at that commit and push only that tag.
-3. The release workflow rejects commits that are not ancestors of main. It runs all tests, builds the executable and installer, tests installation and removal, and uploads both files to the matching GitHub Release.
-4. Verify the release run succeeded and both nonempty assets are uploaded. Keep published tags and older assets unchanged.
-5. Repeat Explorer Open With and extraction checks when shell registration or startup changes. Use dedicated archives and preserve existing default applications and user data.
+2. Bump the version in one place: `version.py`. PR CI and the release workflow read it from there (#61), so the workflow files, the PowerShell scripts, and `KantanKaiko.iss` must not carry a version of their own.
+3. Create a new annotated `vMAJOR.MINOR.PATCH` tag at that commit and push only that tag.
+4. The release workflow rejects commits that are not ancestors of main and tags that do not match `version.py`. It runs all tests, builds the executable and installer, tests installation and removal, and uploads both files to the matching GitHub Release.
+5. Verify the release run succeeded and both nonempty assets are uploaded. Keep published tags and older assets unchanged.
+6. Run the manual Explorer checks in [manual-explorer-qa.md](manual-explorer-qa.md) and record the result below. Automated tests cover the app logic, but not Explorer's menu entry, the real OLE drop, or the drag-over highlight.
+7. Repeat Explorer Open With and extraction checks whenever shell registration or startup changes. Use dedicated archives and preserve existing default applications and user data.
 
 ## 2026-10-18 v1.1.0 release verification
 
@@ -47,10 +49,15 @@ What was actually verified for `v1.2.0` (tag points at `9a34a94`, released 2026-
   - `KantanKaiko-Setup-1.2.0.exe` — 16,425,265 bytes
 - Local pre-release checks used a dedicated settings directory (`KANTAN_SETTINGS_DIR`): `python -m pytest -q` → 130 passed, and `python tests/run_all.py` passed every suite.
 - Version single-source check on this machine: `./scripts/build-installer.ps1` with no `-Version` produced `dist/KantanKaiko-Setup-1.2.0.exe` from `version.py`, and running Inno Setup without the version defines aborted with `AppVersion is not defined.` instead of silently building an old version. The generated installer was deleted after the check; the machine already had an installation, so `test-installer.ps1` was intentionally not run locally (CI performs it).
+- `updates.check_latest()` run against the published release (2026-10-18) returned `{'version': '1.2.0', 'newer': False}` for the current `VERSION` and `newer: True` with the `v1.2.0` URL for `1.1.0`, so 更新の確認 reports `v1.2.0` as the latest release instead of offering a false update.
 
 Not verified for this release (no evidence, do not treat as passing):
 
-- No interactive Explorer check was performed for `v1.2.0`: Open With → かんたん解凍, a real drag-and-drop from Explorer, and the drag-over highlight from #29 were **not** exercised by hand. The real Explorer drop path cannot be synthesized because it uses OLE shared memory.
+- No interactive Explorer check was performed for `v1.2.0`: Open With → かんたん解凍, a real drag-and-drop from Explorer, and the drag-over highlight from #29 were **not** exercised by hand. [manual-explorer-qa.md](manual-explorer-qa.md) defines the steps, but they are still unexecuted. The real Explorer drop path cannot be synthesized because it uses OLE shared memory.
 - The downloaded `v1.2.0` executables were not run on a clean Windows machine; only the CI runs and the Release asset metadata above were checked.
 - `%APPDATA%\KantanKaiko\settings.json` restoration (window position and last destination) was verified by automated Tk tests, not by restarting a real installed build by hand.
+
+Open item carried to the next release:
+
+- The workflows were moved to Node24-compatible action majors (`actions/checkout@v7`, `actions/setup-python@v7`, `actions/upload-artifact@v7`, `softprops/action-gh-release@v3`) in #64, after this tag. The `v1.2.0` release run used the previous versions, so `action-gh-release@v3` has not run at a tag yet; confirm the Release step and both assets at the next release. PR CI with the new majors was green (run `39113108342`) with no Node20 deprecation annotation.
 
