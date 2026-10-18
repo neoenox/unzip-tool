@@ -24,6 +24,8 @@ jobs:
         run: ./scripts/ci-install-unrar.ps1
       - name: Run tests
         run: python tests/run_all.py
+      - name: Run tests under pytest
+        run: python -m pytest --tb=short -q
       - name: Build executable
         run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko app.py
       - name: Verify RAR in distribution executable
