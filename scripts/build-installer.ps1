@@ -1,12 +1,19 @@
 param(
-    [string]$Version = '1.1.0',
+    [string]$Version,
     [string]$ExecutablePath,
     [string]$CompilerPath
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+if (-not $Version) {
+    # 版数は version.py が唯一の出所。直書きするとリリース時に取り残される。
+    $versionFile = Join-Path $projectRoot 'version.py'
+    $match = [regex]::Match((Get-Content -LiteralPath $versionFile -Raw), "VERSION\s*=\s*'([^']+)'")
+    if (-not $match.Success) { throw "Could not read VERSION from $versionFile." }
+    $Version = $match.Groups[1].Value
+}
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
-    throw 'Version must be a semantic version such as 1.1.0 or 1.1.0-beta.1.'
+    throw 'Version must be a semantic version such as 1.2.3 or 1.2.3-beta.1.'
 }
 $numericVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
 if (-not $ExecutablePath) {

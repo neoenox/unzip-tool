@@ -74,24 +74,26 @@ REM UnRARは同梱しない。RARはWinRAR/外付けUnRAR/KANTAN_UNRAR経由で�
 
 ## インストーラー
 
-`KantanKaiko-Setup-1.1.0.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
+`KantanKaiko-Setup-1.2.0.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
 
 ローカルで作成する場合はInno Setup 6を用意し、先に `build.bat` でexeを作成する。
 
 ```powershell
-./scripts/build-installer.ps1 -Version 1.1.0
-# → dist/KantanKaiko-Setup-1.1.0.exe
+./scripts/build-installer.ps1 -Version 1.2.0
+# → dist/KantanKaiko-Setup-1.2.0.exe
 ```
+
+`-Version` を省略すると `version.py` の値をそのまま使う。版数はこの1ファイルだけが持ち、PRのCIもリリースworkflowもここから読む。
 
 PRのCIではインストール・ショートカット・バージョン登録・再インストール・アンインストールと、追加したユーザーファイルを消さないことまで検証する。リリースタグのpushでは、通常のexeとタグのバージョン番号を付けたインストーラーの両方をReleaseへ添付する。
 
-リリースタグ（`v1.1.0` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` とインストーラーを自動添付する。ローカルでタグを作っただけでは実行されない。
+リリースタグ（`v1.2.0` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` とインストーラーを自動添付する。ローカルでタグを作っただけでは実行されない。
 
 テスト・ビルド失敗時やexeが未生成・空の場合は公開処理へ進まない。通常のブランチpush・PR・手動実行ではReleaseを作成しない。新しい変更をリリースする場合は、対象のPRをマージしたコミットへタグを付ける。
 
 ```bat
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 ## テスト
@@ -119,7 +121,7 @@ python tests/run_all.py
 
 ### 更新の確認
 
-画面上部の「更新を確認」で公開済みの最新版を確認できる。新しい版がある場合は「新版を開く」で公式GitHub Releaseページを開く。起動時の通信や自動インストールは行わない。アプリのバージョンは `version.py` で管理し、リリースタグはその値と一致させる（現在は `v1.1.0`）。
+画面上部の「更新を確認」で公開済みの最新版を確認できる。新しい版がある場合は「新版を開く」で公式GitHub Releaseページを開く。起動時の通信や自動インストールは行わない。アプリのバージョンは `version.py` で管理し、リリースタグはその値と一致させる（現在は `v1.2.0`）。PRのCIもこの値からインストーラー名を決めるため、リリース時の変更は `version.py` の1行だけ。
 
 Windows CIではビルドしたexe自身の作業プロセスで、UnRARがない場合の案内と、UnRARがある場合のRAR3/5展開を検証する。UnRARはexeに同梱しない。
 
@@ -129,4 +131,7 @@ python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar 'C:\Program F
 
 ### v1.0.1
 インストールするとZIP等の「プログラムから開く」に登録されます。選んだ書庫を一覧に追加します。既定のアプリは自動変更しません。v1.0.0をご利用の場合は新しいインストーラーを上書き実行してください。
+
+### v1.2.0
+ヘッダーの「ヘルプ」とショートカット（`F1` で開く / `Esc` で閉じる / `Enter` 解凍 / `Delete` 一覧から外す / `Ctrl+O` 追加 / `↑` `↓` 選択）を追加しました。前回の保存先とウィンドウ位置を次回起動時に復元し、書庫をドラッグしている間はドロップ先がハイライトされます。ウィンドウアイコンも付きました。設定は `%APPDATA%\KantanKaiko\settings.json` に保存されます。
 
