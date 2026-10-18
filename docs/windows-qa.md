@@ -61,3 +61,36 @@ Open item carried to the next release:
 
 - The workflows were moved to Node24-compatible action majors (`actions/checkout@v7`, `actions/setup-python@v7`, `actions/upload-artifact@v7`, `softprops/action-gh-release@v3`) in #64, after this tag. The `v1.2.0` release run used the previous versions, so `action-gh-release@v3` has not run at a tag yet; confirm the Release step and both assets at the next release. PR CI with the new majors was green (run `39113108342`) with no Node20 deprecation annotation.
 
+## 2026-10-18 v1.2.0 installed-build checks (the automatable part of the manual checklist)
+
+The checklist in [manual-explorer-qa.md](manual-explorer-qa.md) was run against the published `v1.2.0` installer on this machine, using the installed build rather than the source tree. Items that can be evidenced without a human were executed and are listed as PASS; items that need Explorer itself, a real pointer, or real typing remain 未実施 and are listed separately. This supersedes the earlier note that settings persistence had only been verified by automated Tk tests.
+
+How the installed GUI was driven: keyboard messages (`WM_KEYDOWN`/`WM_CHAR`) with scan codes attached, window-only screenshots via `PrintWindow(PW_RENDERFULLCONTENT)` (the desktop was never captured), and `KANTAN_SETTINGS_DIR` to keep the real `%APPDATA%\KantanKaiko\settings.json` out of the destructive cases.
+
+Installer used: `KantanKaiko-Setup-1.2.0.exe`, SHA256 `b061891c57e9813c41edb1b4e22c842cc7bc9c33b0cf76b835b0b480ecfb9deb`, which matches the Release asset digest.
+
+PASS with evidence:
+
+- **1 installer** — a silent run (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`) exited 0. The uninstall entry reports `DisplayVersion 1.2.0`, `InstallDate 20261018`; files are placed in `%LOCALAPPDATA%\Programs\KantanKaiko`, and the Start Menu shortcut `…\Programs\かんたん解凍\かんたん解凍.lnk` exists.
+- **2 version and icon** — the installed `KantanKaiko.exe` is 14,674,094 bytes, SHA256 `bbf37cef261fa46903f2d29d729eef3b7e6314aa8a9f13e9b3cb966cb2299842`, byte-identical to the Release asset. A window-only screenshot of the installed build shows the window icon and the header `ZIP・7z・RAR・TAR / v1.2.0`.
+- **3 Open With (the app side of it)** — `HKCU\Software\Classes\KantanKaiko.Archive\shell\open\command` is `"…\KantanKaiko.exe" "%1"`, and `KantanKaiko.Archive` is listed under `OpenWithProgids` for `.zip`, `.7z`, `.rar`, `.tar`, `.gz`, `.tgz`. Existing defaults were left alone: WinRAR stayed the default for `.zip`/`.7z`/`.rar`. Launching the installed executable with `日本語 テスト 1.zip` — exactly what the registered command does — added one card, with the Japanese name and its space rendered correctly and a green `解凍できます` badge.
+- **5 password archive, display half** — launching with `secret.zip` shows the orange `PW必要` badge, the Japanese prompt `パスワードを入力してください。`, the password row with its `表示` checkbox, and the `再試行` / `パスワードを入力` buttons.
+- **6 extraction, Japanese names** — driving the installed build with the Return key extracted `日本語 テスト 1.zip`. The output folder holds exactly `readme.txt`, `notes/メモ 1.txt`, and `notes/deep/さらに深い.txt`: the same names and bytes as the archive entries, and the Japanese body text reads back correctly, so nothing was mangled.
+- **7 re-extraction numbering** — extracting the same archive a second time produced `plain` and `plain (2)` (and `日本語 テスト 1` / `(2)`) with identical contents, leaving the first folder's file untouched.
+- **9 settings persist and restore** — closing the window created `%APPDATA%\KantanKaiko\settings.json` where no file existed before. Given a settings file with `geometry = 900x700+300+200` and `last_dest` pointing at the QA output folder, the installed build opened at `[300, 200]` with that destination shown in the UI, and closing kept both values.
+- **10 off-screen geometry is ignored** — with `geometry = 900x700+9000+9000` the installed build opened on screen at the default placement (`+234+234`) and rewrote `settings.json` to `780x760+234+234`.
+- **11 uninstall** — running the generated uninstaller silently exited 0. Afterwards the executable, the Start Menu shortcut, the `KantanKaiko.Archive` ProgID, the `.zip` `OpenWithProgids` entry, and the uninstall entry were all gone, while a file created by hand in the install directory, `tools\UnRAR.exe` (565,032 bytes; not shipped by the installer), and `%APPDATA%\KantanKaiko\settings.json` survived. Re-running the published installer restored `1.2.0` with SHA256 `bbf37cef…299842` and all of the registrations above.
+- **12 `Delete`** — pressing `Delete` on a one-card list removed the card and left the archive file on disk.
+
+Not verified for this release (no evidence, do not treat as passing):
+
+- **1 wizard text** — the install was silent, so the Japanese wizard pages were never displayed.
+- **3 Explorer menu appearance** — the registration exists and the registered command works, but Explorer's Open With submenu itself was not opened.
+- **4, 5 real drag-and-drop** — the Explorer drop path hands data over through OLE shared memory, so it cannot be synthesized, and no human ran it. The drag-over highlight from #29 is a rendering result for the same reason.
+- **8 password retry by typing** — the `PW必要` state and its prompt were captured, but text could not be delivered into the Tk password entry from outside the process: posting `WM_CHAR` to both the client window and the entry's own window left it empty. Passing a wrong value and then `kantan` therefore still needs a human. `tests/test_password.py` covers the logic.
+- **12 `F1`, `Esc`, `Ctrl+O`** — a synthetic `F1` does not become Tk's `F1` keysym; the same synthetic key also does nothing against an in-process `python app.py`, so this is a limit of the harness rather than a difference in the product. `tests/test_ui.py` covers the shortcut dispatch, and `Delete` (the one shortcut that could be delivered) was exercised above.
+- **13 更新を確認** — needs a human click. `updates.check_latest()` against the published release is already recorded above.
+- No clean Windows machine was used; only this development machine.
+
+Observation filed as an issue instead of being fixed here: with a single card in the list, `Delete` removes the card as expected, but the bottom status line keeps the stale text `3 件 / 解凍できます。` while the list is already showing its empty state. `remove_job()` calls `_empty_layout()` without resetting `self.status`, unlike `clear_jobs()`. This is filed as #72; it is display-only and no file is deleted.
+
