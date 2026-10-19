@@ -106,6 +106,12 @@ python tests/run_all.py
 Windows CIは exe をビルドする 3.11 に加えて、3.13 でも同じテストを実行する（exeの同梱Pythonは3.11のまま）。
 真のExplorerドロップ配送や「プログラムから開く」はOLE共有メモリとシェル登録に依存するため自動化できない。人が確認する手順は [docs/manual-explorer-qa.md](docs/manual-explorer-qa.md) にまとめてある。
 
+公開したリリースそのもの（資産のサイズとハッシュ、実exeの起動時の設定復元、画面外座標の拒否、更新確認）は `scripts/verify-release.ps1` で確認する。ウィンドウを表示するためCIでは動かさない。
+
+```powershell
+pwsh -File scripts/verify-release.ps1
+```
+
 ## 仕様メモ
 
 - DnDはpoll方式: WndProc内ではTkを一切触らない (別プロセス通知時の再入で落ちるため)

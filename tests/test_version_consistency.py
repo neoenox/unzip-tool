@@ -61,7 +61,7 @@ class VersionConsistencyTests(unittest.TestCase):
             self.assertEqual(set(values), {VERSION}, f"README の{label}が version.py と一致しない")
 
     def test_installer_scripts_read_the_version_from_version_py(self):
-        for name in ("build-installer.ps1", "test-installer.ps1"):
+        for name in ("build-installer.ps1", "test-installer.ps1", "verify-release.ps1"):
             text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
             with self.subTest(script=name):
                 self.assertNotIn(VERSION, text, f"{name} は版数を直書きしない")
