@@ -19,6 +19,9 @@ Windows向けのシンプルな解凍ソフト。zip/tarは依存なし、rarの
 2. `tools/UnRAR.exe` を置く（exeと同じ場所、またはリポジトリ直下。同梱しない）
 3. 環境変数 `KANTAN_UNRAR` にUnRAR.exeのパスを指定
 
+`KANTAN_UNRAR` を指定したときはそのパスだけを使う（見つからなければ他候補へは
+落とさず、指定パス付きの案内を出す）。
+
 UnRARはフリーウェア ([rarlab](https://www.rarlab.com/rar_add.htm) のUnRAR for Windows)。
 管理方針は (a) バイナリはgit管理外＋各自/CI調達（`tools/UnRAR.exe` はコミットしない）。
 入手手順と検出順は [tools/README.md](tools/README.md)、ライセンス全文は
@@ -130,10 +133,10 @@ pwsh -File scripts/verify-release.ps1
 
 画面上部の「更新を確認」で公開済みの最新版を確認できる。新しい版がある場合は「新版を開く」で公式GitHub Releaseページを開く。起動時の通信や自動インストールは行わない。アプリのバージョンは `version.py` で管理し、リリースタグはその値と一致させる（現在は `v1.2.1`）。PRのCIもこの値からインストーラー名を決めるため、リリース時の変更は `version.py` の1行だけ。
 
-Windows CIではビルドしたexe自身の作業プロセスで、UnRARがない場合の案内と、UnRARがある場合のRAR3/5展開を検証する。UnRARはexeに同梱しない。
+Windows CIではビルドしたexe自身の作業プロセスで、UnRARがない場合の案内と、UnRARがある場合のRAR3/5展開を検証する。UnRARはexeに同梱しない。`KANTAN_UNRAR` を指定したときはそのパスだけを使うため、手元（WinRAR導入機）でも同じ手順で確認できる。
 
 ```powershell
-python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar 'C:\Program Files\UnRAR\UnRAR.exe'
+python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar tools/UnRAR.exe
 ```
 
 ### v1.0.1

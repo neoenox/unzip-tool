@@ -12,8 +12,10 @@
 3. 環境変数 `KANTAN_UNRAR` に `UnRAR.exe` のフルパスを指定する。
    (CIは `choco install unrar -y` で調達し、テストのみに使う。同梱はしない)
 
-検出順は `unzipper.find_unrar_tool()` どおり:
-`KANTAN_UNRAR` > `tools/UnRAR.exe` (基点隣接・exe隣・展開先) > WinRAR > PATH。
+検出順は `unzipper.find_unrar_tool()` どおり。`KANTAN_UNRAR` を指定したときは
+そのパスだけを使い、見つからなければ他候補へは落とさず案内を出す（指定ミスに
+気づけるようにするため）。指定が無いときは `tools/UnRAR.exe`
+(基点隣接・exe隣・展開先) > WinRAR > PATH の順。
 
 ## ライセンス
 
