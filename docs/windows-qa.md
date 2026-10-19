@@ -161,3 +161,23 @@ PASS shipped exe: testfile.rar5.rar with UnRAR
 
 The temporary logging was removed before committing; the frozen worker's search order is otherwise unchanged (`tools\UnRAR.exe` next to the exe or the bundle > WinRAR > `PATH`).
 
+## 2026-10-19 v1.2.2 release verification
+
+- The tag `v1.2.2` points at `82fa9be` (`chore: v1.2.2 を準備する`), whose only changes were `version.py` (`1.2.1` → `1.2.2`) and the version references in the README. The workflow's `Verify release commit is on main` and `Verify application version matches release tag` steps passed.
+- The release run `39186196306` succeeded and produced no check-run annotations. `Test`, `Verify release executable`, `Verify RAR in distribution executable`, `Build installer` and `Test installer` all passed.
+- The Release `v1.2.2` is published (neither draft nor pre-release) with two assets:
+  - `KantanKaiko.exe` — 14,675,433 bytes, SHA256 `c922468d979ccdff16d083bd10cf4a1d35e09be124122a971aad1e162ea44f1e`
+  - `KantanKaiko-Setup-1.2.2.exe` — 16,425,391 bytes, SHA256 `aa49e4eda0ecfaca07fb26e1a76c5396f6e3d111c2c01827fbc5c6eaea54d759`
+- [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) reported `Checked 24 item(s); 0 failed.` against the published release: both asset sizes and digests, the window placement from a saved position, the off-screen rejection, saving the geometry on close, and the update feed (`the published version is offered as the latest (1.2.2)`). `scripts/test-installer.ps1` was skipped because an installation already exists for this user, as in the previous release.
+- The downloaded installer's SHA256 matched its asset digest and the silent upgrade returned 0. The uninstall entry now reports `DisplayVersion 1.2.2`, and the installed `KantanKaiko.exe` is byte-identical to the released asset (`c922468d…`, 14,675,433 bytes). `tools\UnRAR.exe`, `%APPDATA%\KantanKaiko\settings.json`, the `KantanKaiko.Archive` Open With registration and the Start Menu shortcut (`かんたん解凍\かんたん解凍.lnk` → the installed exe) all survived the upgrade.
+- The released build behaves as #80 intends. Run against the *installed* 1.2.2 executable, the frozen-exe harness passes all three cases:
+
+```
+PASS shipped exe: Japanese guidance without UnRAR
+PASS shipped exe: testfile.rar3.rar with UnRAR
+PASS shipped exe: testfile.rar5.rar with UnRAR
+```
+
+  The first line is the check that failed on this machine before the fix (Windows restores `ProgramFiles` for child processes, so the app kept finding `C:\Program Files\WinRAR\UnRAR.exe` even though the check hid every other candidate). An explicit `KANTAN_UNRAR` now takes precedence, so it is deterministic here despite WinRAR being installed.
+- The remaining manual items are unchanged: the Explorer Open With menu itself, a real Explorer drag-and-drop, typing into the password entry, the `F1` / `Esc` / `Ctrl+O` shortcuts, and the installer wizard click-through.
+
