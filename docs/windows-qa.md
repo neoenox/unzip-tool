@@ -106,3 +106,18 @@ Observation filed as an issue instead of being fixed here: with a single card in
 - The window-only pixel captures used for this check were deleted after inspection.
 - The automatable parts of this record were folded into [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) afterwards; its first run against `v1.2.1` passed 24 checks (published assets and digests, window placement from settings, off-screen rejection, save on close, and the update feed). Visual items — the Explorer menu, real drag-and-drop, and the installer wizard text — remain manual.
 
+## 2026-10-19 installer wizard text (v1.2.1, captured)
+
+The checklist's first item asks for a Japanese installer, and the earlier records left that unverified because every install here was silent. This time the published `v1.2.1` installer was started normally, with no silent flags, and only its own windows were captured with `PrintWindow(PW_RENDERFULLCONTENT)`. No desktop capture was made, and the images were deleted after inspection.
+
+- The wizard window (class `TWizardForm`) carries the title `かんたん解凍 バージョン 1.2.1 セットアップ` — the Japanese product name and the released version.
+- Its first page is `スタートメニューフォルダーの指定`: `プログラムのショートカットを作成する場所を指定してください。`, the lines `セットアップは次のスタートメニューフォルダーにプログラムのショートカットを作成します。` and `続けるには「次へ」をクリックしてください。違うフォルダーを選択するには「参照」をクリックしてください。`, the folder field `かんたん解凍`, and the buttons `次へ(N)` / `キャンセル`. Nothing was garbled.
+- No elevation prompt appeared. The installer uses `PrivilegesRequired=lowest` and `consent.exe` never ran, which matches the checklist's "no administrator rights" expectation.
+- Closing the wizard shows a fully Japanese confirmation, `セットアップ終了`: `セットアップ作業は完了していません。ここでセットアップを中止するとプログラムはインストールされません。` with `はい(Y)` / `いいえ(N)`.
+- Cancelling left the machine as it was: the uninstall entry still reports `1.2.1` and the installed executable is still in place.
+- Not driven by hand: the click-through to the end. Inno's buttons did not react to posted key messages, so the wizard was cancelled and the installer processes were stopped. That the install *completes* is evidenced by the silent install (exit 0) and by `scripts/test-installer.ps1` in CI, not by a hand-driven wizard.
+
+## 2026-10-19 remaining manual items
+
+After the captures above, the checklist items that still need a human are the Explorer Open With menu itself, a real Explorer drag-and-drop (the drop path uses OLE shared memory), typing into the password entry, the `F1` / `Esc` / `Ctrl+O` shortcuts, reading the installer wizard pages, and clicking the 更新を確認 button. The rest are covered by `scripts/verify-release.ps1`, `scripts/test-installer.ps1`, and the test suite.
+
