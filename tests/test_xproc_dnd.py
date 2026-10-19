@@ -7,6 +7,8 @@
 
 検証内容:
 1. 別プロセスから hdrop=NULL の通知 → 無視し、生存＋イベントループ健全
+   健全性は「通知の後も heartbeat が新しくなる」ことで判断する。1時点の
+   age 判定は負荷で揺れるが、進んでいるかどうかは揺れない (#84)。
 
 ※意図的なゴミハンドルは対象外: 無効アドレスへの一切の接触
 (GlobalFlags/DragQuery/DragFinishのいずれも)が user mode ではAVし得るため、
@@ -14,7 +16,9 @@
 
 実行: python tests/test_xproc_dnd.py
 """
+
 import ctypes
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -27,43 +31,93 @@ WM_DROPFILES = 0x0233
 
 def _send(hwnd: int, hdrop: int) -> int:
     user32 = ctypes.windll.user32
-    user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    user32.SendMessageW.argtypes = [
+        wintypes.HWND,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    ]
     user32.SendMessageW.restype = wintypes.LPARAM
     return user32.SendMessageW(hwnd, WM_DROPFILES, hdrop, 0)
 
 
-def _heartbeat_fresh(tmp: Path) -> bool:
+def _heartbeat_age(tmp: Path) -> float | None:
+    """heartbeat.txt が最後に更新されてからの秒数。まだ無い・読めないときは None。"""
     try:
-        return time.time() - float((tmp / "heartbeat.txt").read_text(encoding="utf-8")) < 3.0
+        return time.time() - float((tmp / "heartbeat.txt").read_text(encoding="utf-8"))
     except Exception:
-        return False
+        return None
+
+
+def _snapshot(process: subprocess.Popen, tmp: Path, started: float) -> str:
+    """失敗メッセージに載せる測定値。どの段階でどれだけ遅れたかを残す (#84)。"""
+    age = _heartbeat_age(tmp)
+    return (
+        f"elapsed={time.time() - started:.2f}s"
+        f" heartbeat_age={'none' if age is None else f'{age:.2f}s'}"
+        f" hwnd_written={(tmp / 'hwnd.txt').exists()}"
+        f" exitcode={process.poll()}"
+    )
 
 
 def test_cross_process_robustness() -> None:
     tmp = Path(tempfile.mkdtemp(prefix="xproc-"))
     probe = Path(__file__).resolve().parent / "xproc_probe.py"
-    p = subprocess.Popen([sys.executable, str(probe), str(tmp)])
+    started = time.time()
+    process = None
     try:
+        process = subprocess.Popen([sys.executable, str(probe), str(tmp)])
+
         hwndf = tmp / "hwnd.txt"
-        deadline = time.time() + 20
+        deadline = started + 20
         while not hwndf.exists():
-            assert time.time() < deadline, "probe did not start"
-            assert p.poll() is None, "probe died at startup"
+            assert time.time() < deadline, (
+                f"probe did not start ({_snapshot(process, tmp, started)})"
+            )
+            assert process.poll() is None, (
+                f"probe died at startup ({_snapshot(process, tmp, started)})"
+            )
             time.sleep(0.1)
         hwnd = int(hwndf.read_text())
+
         # 初回ハートビートを待つ (プローブ起動直後はまだ無い)
-        deadline = time.time() + 15
-        while not _heartbeat_fresh(tmp):
-            assert time.time() < deadline, "probe event loop never started"
-            assert p.poll() is None, "probe died at startup"
+        deadline = started + 15
+        while True:
+            age = _heartbeat_age(tmp)
+            if age is not None and age < 3.0:
+                break
+            assert time.time() < deadline, (
+                f"probe event loop never started ({_snapshot(process, tmp, started)})"
+            )
+            assert process.poll() is None, (
+                f"probe died at startup ({_snapshot(process, tmp, started)})"
+            )
             time.sleep(0.2)
 
+        before = _heartbeat_age(tmp)
         _send(hwnd, 0)  # NULL
-        time.sleep(2)
-        assert p.poll() is None, "app DIED on foreign NULL hdrop"
-        assert _heartbeat_fresh(tmp), "event loop BROKEN on foreign NULL hdrop"
+        # 通知を処理した後もループが回っている証拠として、より新しい heartbeat を待つ。
+        deadline = time.time() + 10
+        while True:
+            age = _heartbeat_age(tmp)
+            assert process.poll() is None, (
+                f"app DIED on foreign NULL hdrop ({_snapshot(process, tmp, started)})"
+            )
+            if age is not None and before is not None and age < before:
+                break
+            assert time.time() < deadline, (
+                "event loop did not advance after a foreign NULL hdrop"
+                f" ({_snapshot(process, tmp, started)} heartbeat_before={before:.2f}s)"
+            )
+            time.sleep(0.1)
     finally:
-        p.terminate()
+        if process is not None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        shutil.rmtree(tmp, ignore_errors=True)
     print("PASS test_cross_process_robustness")
 
 
