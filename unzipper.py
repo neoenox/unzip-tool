@@ -57,12 +57,36 @@ def _base_dirs() -> list[Path]:
     return dirs
 
 
+def _configured_unrar() -> str:
+    """環境変数 KANTAN_UNRAR の指定 (未指定なら空文字)。"""
+    return os.environ.get("KANTAN_UNRAR", "").strip().strip('"')
+
+
+def _rar_tool_help() -> str:
+    """UnRARが見つからないときの案内。指定付きで見つからない場合は指定パスを示す (#80)。"""
+    configured = _configured_unrar()
+    if configured:
+        return f"{RAR_TOOL_HELP} (指定された KANTAN_UNRAR のパスが見つかりません: {configured})"
+    return RAR_TOOL_HELP
+
+
 def find_unrar_tool() -> Path | None:
-    """UnRAR.exe を探す。環境変数 > tools隣接 > WinRAR > PATH の順。"""
+    """UnRAR.exe を探す。環境変数を指定したときはそのパスだけを使う (#80)。
+
+    指定が無いときは tools隣接 > WinRAR > PATH の順に探す。
+    指定したパスが無い場合に他候補へ落とさないのは、黙って別のUnRARを使うと
+    「指定したのに反映されない」ことに気づけず、未検出の案内も出せないため。
+    Windowsは子プロセスの ProgramFiles を親の変更どおりにしないので、
+    WinRAR導入機で「ツール無し」を再現する手段としても必要。
+    """
+    configured = _configured_unrar()
+    if configured:
+        path = Path(configured)
+        try:
+            return path if path.is_file() else None
+        except OSError:
+            return None
     cands: list[Path] = []
-    env = os.environ.get("KANTAN_UNRAR", "").strip().strip('"')
-    if env:
-        cands.append(Path(env))
     for base in _base_dirs():
         cands.append(base / "tools" / "UnRAR.exe")
     pf = os.environ.get("ProgramFiles", r"C:\Program Files")
@@ -96,7 +120,7 @@ def _setup_rar_tool() -> None:
         raise ValueError("rarfile がありません (pip install -r requirements.txt)")
     tool = find_unrar_tool()
     if tool is None:
-        raise ValueError(RAR_TOOL_HELP)
+        raise ValueError(_rar_tool_help())
     rarfile.UNRAR_TOOL = str(tool)
     try:
         rarfile.tool_setup()

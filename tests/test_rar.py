@@ -1,12 +1,14 @@
 """RAR対応テスト。UnRARツールが必要 (未検出時はスキップ)。
 
-ツールの指定: 環境変数 KANTAN_UNRAR > tools/UnRAR.exe > WinRAR > PATH。
+ツールの指定: 環境変数 KANTAN_UNRAR を指定したときはそのパスだけを使う。
+指定が無いときは tools/UnRAR.exe > WinRAR > PATH の順 (#80)。
 実行例: $env:KANTAN_UNRAR='C:/tools/UnRAR.exe'; python tests/test_rar.py
 """
 import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -54,6 +56,41 @@ def test_rar_no_tool_message() -> None:
         raise AssertionError("expected ValueError without tool")
 
 
+def test_configured_tool_is_authoritative() -> None:
+    """KANTAN_UNRAR を指定したら、そのパスだけを使う (#80)。
+
+    Windowsは子プロセスの ProgramFiles を親の変更どおりにしないため、
+    WinRAR導入機では環境変数だけでは「ツール無し」を作れない。指定を最優先に
+    することで、未検出の案内文も環境に依存せず検査できる。
+    """
+    with tempfile.TemporaryDirectory(prefix="rar-spec-") as d:
+        base = Path(d)
+        adjacent = base / "tools"
+        adjacent.mkdir()
+        adjacent_tool = adjacent / "UnRAR.exe"
+        adjacent_tool.write_bytes(b"MZ")  # 隣接候補が見つかってしまう状況
+        missing = base / "missing.exe"
+        with patch.object(unzipper, "_base_dirs", lambda: [base]):
+            with patch.dict(os.environ, {"KANTAN_UNRAR": str(missing)}):
+                assert find_unrar_tool() is None
+            with patch.dict(os.environ, {"KANTAN_UNRAR": str(adjacent_tool)}):
+                assert find_unrar_tool() == adjacent_tool
+
+
+def test_configured_tool_error_names_the_path() -> None:
+    """指定パスが無いときは、案内文にそのパスを含める (#80)。"""
+    with tempfile.TemporaryDirectory(prefix="rar-spec-") as d:
+        missing = Path(d) / "missing.exe"
+        with patch.dict(os.environ, {"KANTAN_UNRAR": str(missing)}):
+            unzipper._rar_tool_ready = False
+            try:
+                list_contents(VENDOR / "testfile.rar5.rar")
+            except ValueError as e:
+                assert "UnRAR" in str(e) and str(missing) in str(e), e
+            else:
+                raise AssertionError("expected ValueError for a missing KANTAN_UNRAR path")
+
+
 def main() -> int:
     test_rar_basics()
     print("PASS test_rar_basics")
@@ -61,6 +98,10 @@ def main() -> int:
     print("PASS test_rar3_rar5")
     test_rar_no_tool_message()
     print("PASS test_rar_no_tool_message")
+    test_configured_tool_is_authoritative()
+    print("PASS test_configured_tool_is_authoritative")
+    test_configured_tool_error_names_the_path()
+    print("PASS test_configured_tool_error_names_the_path")
     print("ALL RAR PASSED")
     return 0
 

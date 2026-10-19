@@ -121,3 +121,43 @@ The checklist's first item asks for a Japanese installer, and the earlier record
 
 After the captures above, the checklist items that still need a human are the Explorer Open With menu itself, a real Explorer drag-and-drop (the drop path uses OLE shared memory), typing into the password entry, the `F1` / `Esc` / `Ctrl+O` shortcuts, reading the installer wizard pages, and clicking the 更新を確認 button. The rest are covered by `scripts/verify-release.ps1`, `scripts/test-installer.ps1`, and the test suite.
 
+## 2026-10-19 why the local frozen-RAR check failed (WinRAR installed)
+
+`python tests/test_frozen_rar.py --exe dist\KantanKaiko.exe` failed on this machine while CI stayed green:
+
+```
+AssertionError: ('done', ([Entry(name='testfile.txt', size=12, is_dir=False)], False))
+```
+
+The check wants "no UnRAR at all": it sets `PATH=''`, points `ProgramFiles` / `ProgramFiles(x86)` at an empty temp directory and `KANTAN_UNRAR` at a missing file. The cause was **not** the repository's git-ignored `tools\UnRAR.exe`:
+
+- Windows restores `ProgramFiles` to its real value for child processes, so the frozen worker still saw `C:\Program Files` and picked `C:\Program Files\WinRAR\UnRAR.exe`. Measured with two independent children (a Python child and `cmd /c`):
+
+```
+this process: ProgramFiles=C:\Users\...\kk-pf-probe2
+child python: ProgramFiles = C:\Program Files                    (not patched)
+child python: ProgramFiles(x86) = C:\Users\...\kk-pf-probe2       (patched)
+child python: KANTAN_TESTVAR = patched-value                      (patched)
+child cmd:    ProgramFiles=C:\Program Files
+```
+
+- Deleting or replacing `tools\UnRAR.exe` changed nothing (it is never the candidate that wins), and temporarily logging the search inside the frozen worker showed which path was chosen and what the process saw:
+
+```
+chosen='C:\Program Files\WinRAR\UnRAR.exe'
+bases=['C:\Users\...\_MEI000058302', 'C:\gemini-desktop\unzip-tool\dist', 'C:\Users\...\_MEI000058302']
+env(PF='C:\Program Files' PATH=None KANTAN='C:\...\kantan-frozen-rar-...\missing.exe')
+```
+
+`KANTAN_UNRAR` *does* reach the worker, so the fix (#80) makes an explicit `KANTAN_UNRAR` authoritative: when it is set, only that path is used; when it is missing, the guidance names it. The check no longer depends on what the machine has installed, and a mistyped `KANTAN_UNRAR` no longer falls back to a different UnRAR silently.
+
+With the fix in a local build, the whole check passes here (a machine with WinRAR installed):
+
+```
+PASS shipped exe: Japanese guidance without UnRAR
+PASS shipped exe: testfile.rar3.rar with UnRAR
+PASS shipped exe: testfile.rar5.rar with UnRAR
+```
+
+The temporary logging was removed before committing; the frozen worker's search order is otherwise unchanged (`tools\UnRAR.exe` next to the exe or the bundle > WinRAR > `PATH`).
+
