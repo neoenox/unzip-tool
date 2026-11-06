@@ -134,16 +134,18 @@ def _decode_zip_name(raw: str) -> str:
 
     Windows製zipは UTF-8フラグ無しで Shift_JIS(cp932) のまま cp437 として
     デコードされることが多い。復元を試み、ダメなら元の名前を返す。
+    UTF-8フラグ無しのUTF-8名 (macOS等) もあるため、UTF-8を先に厳密判定する
+    (UTF-8のバイト列はcp932でも読めてしまい別の文字になるが、逆は成立しにくい)。
     """
     try:
-        raw.encode("cp437")
+        data = raw.encode("cp437")
     except UnicodeEncodeError:
         # 既に正しくデコードされている (UTF-8フラグ付き等)
         return raw
-    for enc in ("cp932", "shift_jis", "utf-8"):
+    for enc in ("utf-8", "cp932"):
         try:
-            return raw.encode("cp437").decode(enc)
-        except (UnicodeDecodeError, UnicodeEncodeError):
+            return data.decode(enc)
+        except UnicodeDecodeError:
             continue
     return raw
 
