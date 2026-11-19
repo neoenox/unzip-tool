@@ -107,6 +107,7 @@ class _Vtbl(ctypes.Structure):
 _drag_over: dict[int, bool] = {}
 # hwnd -> 登録済みターゲット (参照保持しないとGCで落ちる)
 _targets: dict[int, "_DropTarget"] = {}
+_owns_apartment = False
 
 
 def _same_guid(a: GUID, b: GUID) -> bool:
@@ -188,12 +189,14 @@ class _DropTarget:
 
     # --- IUnknown ---
     def _query_interface(self, this, riid, ppv):
-        if riid and ppv:
-            guid = riid.contents
-            if _same_guid(guid, IID_IUNKNOWN) or _same_guid(guid, IID_IDROPTARGET):
-                ppv[0] = self.pointer.value
-                self.refs += 1
-                return S_OK
+        if not riid or not ppv:
+            return E_NOINTERFACE
+        ppv[0] = None
+        guid = riid.contents
+        if _same_guid(guid, IID_IUNKNOWN) or _same_guid(guid, IID_IDROPTARGET):
+            ppv[0] = self.pointer.value
+            self.refs += 1
+            return S_OK
         return E_NOINTERFACE
 
     def _add_ref(self, this):
@@ -242,6 +245,8 @@ def _ole32():
     ole32.RegisterDragDrop.restype = HRESULT
     ole32.RevokeDragDrop.argtypes = [ctypes.c_void_p]
     ole32.RevokeDragDrop.restype = HRESULT
+    ole32.OleUninitialize.argtypes = []
+    ole32.OleUninitialize.restype = HRESULT
     return ole32
 
 
@@ -254,23 +259,35 @@ def register(hwnd: int, store_paths) -> bool:
         return False
     if int(hwnd) in _targets:
         return True
+    global _owns_apartment
+    owns = False
     try:
         ole32 = _ole32()
         hr = ole32.OleInitialize(None)
-        if hr not in (S_OK, S_FALSE):  # 既に初期化済みでも可
+        if hr not in (S_OK, S_FALSE):
             return False
+        owns = hr == S_OK
         target = _DropTarget(int(hwnd), store_paths)
         if ole32.RegisterDragDrop(int(hwnd), target.pointer) != S_OK:
+            if owns:
+                ole32.OleUninitialize()
             return False
+        _owns_apartment = _owns_apartment or owns
         _targets[int(hwnd)] = target
         _drag_over[int(hwnd)] = False
         return True
     except Exception:
+        if owns:
+            try:
+                ole32.OleUninitialize()
+            except Exception:
+                pass
         return False
 
 
 def revoke(hwnd: int) -> None:
     """登録を解除する。失敗しても無視。"""
+    global _owns_apartment
     if os.name != "nt" or not hwnd:
         return
     try:
@@ -280,6 +297,12 @@ def revoke(hwnd: int) -> None:
         pass
     _targets.pop(int(hwnd), None)
     _drag_over.pop(int(hwnd), None)
+    if _owns_apartment and not _targets:
+        try:
+            _ole32().OleUninitialize()
+        except Exception:
+            pass
+        _owns_apartment = False
 
 
 def has_target(hwnd: int) -> bool:

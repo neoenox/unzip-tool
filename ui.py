@@ -268,7 +268,6 @@ def build_help_window(view):
             canvas_height = max(140, allowed - chrome)
             # canvas より先に詰めないと、expand する canvas が幅を全部取ってしまう
             scroll.pack(side="right", fill="y", before=canvas)
-            width += scroll.winfo_reqwidth()
         else:
             canvas_height = content_height  # 収まるのでスクロールバーは出さない
             canvas.configure(yscrollcommand="")

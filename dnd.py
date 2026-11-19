@@ -99,21 +99,20 @@ def enable_drop(widget) -> bool:
             if msg == WM_DROPFILES:
                 # Tk呼び出し禁止: 純Python+ctypesだけで完結させる。
                 # 無効ハンドルには一切触らない (他プロセスのゴミで破壊を防ぐ)。
-                valid = False
+                need_finish = False
                 try:
-                    valid = _hdrop_valid(kernel32, wp)
-                    if valid:
+                    if _hdrop_valid(kernel32, wp):
+                        need_finish = True
                         paths = _query_paths(shell32, wp)
                         _pending.setdefault(hwnd_, []).append(paths)
                 except Exception:
-                    valid = False
+                    pass
                 finally:
-                    if valid:
+                    if need_finish:
                         try:
                             shell32.DragFinish(wp)
                         except Exception:
                             pass
-                return 0
             try:
                 old = _hooks[hwnd_][0]
             except KeyError:

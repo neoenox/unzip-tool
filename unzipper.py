@@ -371,9 +371,15 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
             with py7zr.SevenZipFile(archive, password=_password_text(password)) as sf:
                 if any(not (i.is_directory or i.is_file) or i.is_symlink or i.is_junction for i in sf.files):
                     raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
+                if on_file:
+                    for info in sf.files:
+                        if not info.is_directory:
+                            on_file(info.filename)
                 if on_progress:
                     on_progress(0, 0)  # indeterminate, not a misleading percentage
                 sf.extractall(path=dest)
+                if on_bytes:
+                    on_bytes(total_bytes, total_bytes)
                 if on_progress:
                     on_progress(len(entries), len(entries))
         except py7zr.exceptions.PasswordRequired as e:

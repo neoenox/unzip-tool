@@ -1114,7 +1114,10 @@ class App(tk.Tk):
                 except Exception:
                     pass  # closing the window must not depend on worker cleanup
         if self._updating:
-            self._updating.cancel()
+            try:
+                self._updating.cancel()
+            except Exception:
+                pass
         window = self.help_window
         self.help_window = None
         if window is not None:
