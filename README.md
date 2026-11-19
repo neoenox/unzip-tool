@@ -77,26 +77,26 @@ REM UnRARは同梱しない。RARはWinRAR/外付けUnRAR/KANTAN_UNRAR経由で�
 
 ## インストーラー
 
-`KantanKaiko-Setup-1.2.2.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
+`KantanKaiko-Setup-1.2.3.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
 
 ローカルで作成する場合はInno Setup 6を用意し、先に `build.bat` でexeを作成する。
 
 ```powershell
-./scripts/build-installer.ps1 -Version 1.2.2
-# → dist/KantanKaiko-Setup-1.2.2.exe
+./scripts/build-installer.ps1 -Version 1.2.3
+# → dist/KantanKaiko-Setup-1.2.3.exe
 ```
 
 `-Version` を省略すると `version.py` の値をそのまま使う。版数はこの1ファイルだけが持ち、PRのCIもリリースworkflowもここから読む。
 
 PRのCIではインストール・ショートカット・バージョン登録・再インストール・アンインストールと、追加したユーザーファイルを消さないことまで検証する。リリースタグのpushでは、通常のexeとタグのバージョン番号を付けたインストーラーの両方をReleaseへ添付する。
 
-リリースタグ（`v1.2.2` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` とインストーラーを自動添付する。ローカルでタグを作っただけでは実行されない。
+リリースタグ（`v1.2.3` など `v*`）をGitHubへ作成・pushすると、GitHub Actionsがそのタグのコードをテスト・ビルドし、同じタグのReleaseへ `KantanKaiko.exe` とインストーラーを自動添付する。ローカルでタグを作っただけでは実行されない。
 
 テスト・ビルド失敗時やexeが未生成・空の場合は公開処理へ進まない。通常のブランチpush・PR・手動実行ではReleaseを作成しない。新しい変更をリリースする場合は、対象のPRをマージしたコミットへタグを付ける。
 
 ```bat
-git tag v1.2.2
-git push origin v1.2.2
+git tag v1.2.3
+git push origin v1.2.3
 ```
 
 ## テスト
@@ -131,7 +131,7 @@ pwsh -File scripts/verify-release.ps1
 
 ### 更新の確認
 
-画面上部の「更新を確認」で公開済みの最新版を確認できる。新しい版がある場合は「新版を開く」で公式GitHub Releaseページを開く。起動時の通信や自動インストールは行わない。アプリのバージョンは `version.py` で管理し、リリースタグはその値と一致させる（現在は `v1.2.2`）。PRのCIもこの値からインストーラー名を決めるため、リリース時の変更は `version.py` の1行だけ。
+画面上部の「更新を確認」で公開済みの最新版を確認できる。新しい版がある場合は「新版を開く」で公式GitHub Releaseページを開く。起動時の通信や自動インストールは行わない。アプリのバージョンは `version.py` で管理し、リリースタグはその値と一致させる（現在は `v1.2.3`）。PRのCIもこの値からインストーラー名を決めるため、リリース時の変更は `version.py` の1行だけ。
 
 Windows CIではビルドしたexe自身の作業プロセスで、UnRARがない場合の案内と、UnRARがある場合のRAR3/5展開を検証する。UnRARはexeに同梱しない。`KANTAN_UNRAR` を指定したときはそのパスだけを使うため、手元（WinRAR導入機）でも同じ手順で確認できる。
 
@@ -150,4 +150,7 @@ python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar tools/UnRAR.e
 
 ### v1.2.2
 環境変数 `KANTAN_UNRAR` に指定したパスだけを使うようにしました。指定したパスが見つからない場合は、そのパスを示す案内を出します（今までは黙って別の場所の UnRAR を使うことがあり、指定ミスに気づけませんでした）。
+
+### v1.2.3
+画面位置の復元、解凍中の全体バー、OLEドロップの安全性、一時フォルダの後始末を修正しました。タイトルバーが画面外にある保存位置を復元しなくなり、再試行時に全体バーの件数が実際より多く表示されなくなりました。無効なドロップハンドルを触らずに拒否し、展開エラーが一時フォルダの削除失敗で隠れなくなりました。
 

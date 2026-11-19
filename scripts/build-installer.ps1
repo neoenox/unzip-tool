@@ -13,7 +13,7 @@ if (-not $Version) {
     $Version = $match.Groups[1].Value
 }
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$') {
-    throw 'Version must be a semantic version such as 1.2.3 or 1.2.3-beta.1.'
+    throw 'Version must be a semantic version such as X.Y.Z or X.Y.Z-beta.1.'
 }
 $numericVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
 if (-not $ExecutablePath) {
