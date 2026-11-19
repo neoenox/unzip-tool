@@ -72,8 +72,12 @@ class BackgroundTask:
             child.close()
 
     def _clean_staging(self):
-        if self.staging is not None:
+        if self.staging is None:
+            return
+        try:
             clean_staging(self.staging)
+        except OSError:
+            pass  # 公開済みの結果をクリーンアップ失敗で壊さない
 
     def poll(self):
         if self.finished:

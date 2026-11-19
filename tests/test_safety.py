@@ -34,6 +34,13 @@ class SafetyTests(unittest.TestCase):
         self.assertFalse((self.base / 'out').exists())
         self.assertFalse(list(self.base.glob('.kantan-*')))
 
+    def test_cleanup_failure_does_not_mask_extraction_error(self):
+        src = self.base / 'broken.zip'
+        src.write_bytes(b'not a zip')
+        with patch('unzipper.shutil.rmtree', side_effect=OSError('locked')):
+            with self.assertRaises(zipfile.BadZipFile):
+                extract_archive(src, self.base / 'out')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

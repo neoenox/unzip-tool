@@ -90,6 +90,12 @@ class GeometryTests(unittest.TestCase):
         # 下へ寄りすぎ（タイトルバーが画面外）
         self.assertFalse(settings.placeable_geometry('820x700+100+1070', area))
 
+    def test_geometry_with_titlebar_offscreen_is_rejected(self):
+        area = (0, 0, 1920, 1080)
+        # 上端が画面外なら、下端だけ見えていても復元しない
+        self.assertFalse(settings.placeable_geometry('800x600+500-520', area))
+        self.assertTrue(settings.placeable_geometry('800x600+500+40', area))
+
     def test_negative_coordinates_on_left_monitor_are_placeable(self):
         area = (-1920, 0, 3840, 1080)
         self.assertTrue(settings.placeable_geometry('820x700-1000+100', area))

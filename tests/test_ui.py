@@ -284,6 +284,21 @@ class UITests(unittest.TestCase):
         self.app.update()
         self.assertFalse(self.app.overall_frame.winfo_manager())
 
+    def test_overall_bar_counts_only_current_batch(self):
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
+        done_job, retry_job = self.app.jobs
+        done_job.state = 'done'
+        retry_job.state = 'failed'
+        self.app._sync_card_chrome(retry_job)
+        with patch('app.BackgroundTask') as task:
+            task.return_value.poll.return_value = []
+            retry_job.retry_btn.invoke()
+            self.app.update()
+            self.assertEqual(self.app._extract_total, 1)
+            self.assertEqual(self.app.overall_label.cget('text'), '全体 0/1')
+            self.assertEqual(self.app.overall_bar.cget('value'), 0)
+
     def test_steps_indicator_tracks_progress(self):
         labels = self.app.step_labels
         self.assertEqual(len(labels), 3)

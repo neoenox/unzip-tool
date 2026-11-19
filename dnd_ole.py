@@ -30,6 +30,7 @@ S_FALSE = 1
 E_NOINTERFACE = -2147467262  # 0x80004002
 
 MAX_FILES = 64  # dnd.py と揃える
+GMEM_INVALID_HANDLE = 0x8000  # GlobalFlags(): 無効ハンドル
 
 # WINFUNCTYPE は Windows のみ。非 Windows でも import できるようにする
 # (実行時に register() が False を返すので、その先は使われない)。
@@ -129,6 +130,18 @@ def _query_paths(hdrop) -> list[str]:
     return paths
 
 
+def _hdrop_valid(kernel32, hdrop) -> bool:
+    """OLE経由の HGLOBAL が自プロセスから触れるか確認する (dnd.py と同じ基準)。"""
+    if not hdrop:
+        return False
+    try:
+        kernel32.GlobalFlags.argtypes = [ctypes.c_void_p]
+        kernel32.GlobalFlags.restype = ctypes.c_uint
+        return (kernel32.GlobalFlags(hdrop) & GMEM_INVALID_HANDLE) == 0
+    except Exception:
+        return False
+
+
 def _paths_from_data_object(data_obj) -> list[str]:
     """IDataObject から CF_HDROP を取り出す。失敗時は空リスト。"""
     if not data_obj:
@@ -145,6 +158,8 @@ def _paths_from_data_object(data_obj) -> list[str]:
         return []
     try:
         if stg.tymed != TYMED_HGLOBAL or not stg.hGlobal:
+            return []
+        if not _hdrop_valid(ctypes.windll.kernel32, stg.hGlobal):
             return []
         return _query_paths(stg.hGlobal)
     finally:

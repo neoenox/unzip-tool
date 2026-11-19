@@ -121,7 +121,32 @@ def test_cross_process_robustness() -> None:
     print("PASS test_cross_process_robustness")
 
 
+def test_ole_hdrop_with_invalid_handle_is_rejected():
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    import dnd_ole
+
+    class FakeGlobalFlags:
+        argtypes = None
+        restype = None
+
+        def __init__(self, value):
+            self.value = value
+
+        def __call__(self, _hdrop):
+            return self.value
+
+    class FakeKernel32:
+        def __init__(self, value):
+            self.GlobalFlags = FakeGlobalFlags(value)
+
+    assert dnd_ole._hdrop_valid(FakeKernel32(0), 123)
+    assert not dnd_ole._hdrop_valid(FakeKernel32(0x8000), 123)
+    assert not dnd_ole._hdrop_valid(FakeKernel32(0), 0)
+
+
 def main() -> int:
+    test_ole_hdrop_with_invalid_handle_is_rejected()
+    print("PASS test_ole_hdrop_with_invalid_handle_is_rejected")
     if sys.platform != "win32":
         print("SKIP test_cross_process_robustness (Windows only)")
         return 0

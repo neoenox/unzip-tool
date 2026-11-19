@@ -73,8 +73,9 @@ def placeable_geometry(text: str, area: tuple[int, int, int, int]) -> bool:
         return True  # 位置未指定なら WM が画面内に置く
     area_x, area_y, area_width, area_height = area
     overlap_x = min(x + width, area_x + area_width) - max(x, area_x)
-    overlap_y = min(y + height, area_y + area_height) - max(y, area_y)
-    return overlap_x >= MIN_VISIBLE_X and overlap_y >= MIN_VISIBLE_Y
+    return (overlap_x >= MIN_VISIBLE_X
+            and y >= area_y
+            and min(y + height, area_y + area_height) - y >= MIN_VISIBLE_Y)
 
 
 def virtual_screen() -> tuple[int, int, int, int] | None:

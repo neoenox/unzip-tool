@@ -410,7 +410,10 @@ def publish_staging(staging: Path, dest: str | os.PathLike) -> Path:
 
 
 def clean_staging(staging: Path) -> None:
-    def writable_remove(function, path, _error):
+    def writable_remove(function, path, error):
+        exc = error[1] if isinstance(error, tuple) else error
+        if not isinstance(exc, PermissionError):
+            raise exc
         os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
         function(path)
     if staging.exists():
@@ -426,9 +429,15 @@ def extract_archive(archive: str | os.PathLike, dest: str | os.PathLike,
     staging = Path(tempfile.mkdtemp(prefix=".kantan-", dir=parent))
     try:
         _extract_into(archive, staging, on_progress, password, on_bytes=on_bytes)
-        return publish_staging(staging, dest)
-    finally:
-        clean_staging(staging)
+        result = publish_staging(staging, dest)
+    except Exception:
+        try:
+            clean_staging(staging)
+        except OSError:
+            pass  # 展開エラーをクリーンアップ失敗で上書きしない
+        raise
+    clean_staging(staging)
+    return result
 
 
 def default_dest_for(archive: str | os.PathLike) -> Path:

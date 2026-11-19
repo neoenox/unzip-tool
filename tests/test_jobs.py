@@ -33,6 +33,13 @@ class JobTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('worker timeout')
 
+    def test_publish_survives_staging_cleanup_failure(self):
+        dest = self.base / 'out'
+        with mock.patch('jobs.clean_staging', side_effect=OSError('locked')):
+            kind, payload = self.finish(BackgroundTask('extract', self.archive, dest=dest))
+        self.assertEqual(kind, 'done')
+        self.assertTrue((Path(payload) / 'hello.txt').exists())
+
     def test_list_is_background_task(self):
         kind, payload = self.finish(BackgroundTask('list', self.archive))
         self.assertEqual(kind, 'done')

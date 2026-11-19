@@ -134,6 +134,7 @@ class App(tk.Tk):
         self._closed = False
         self._listing = None
         self._extracting = None
+        self._batch: list[ArchiveJob] = []
         self._updating = None
         self._update_url = None
         self._pending = []
@@ -489,6 +490,7 @@ class App(tk.Tk):
                 pass
             self._listing = None
         self._pending = [job]
+        self._batch = [job]
         self._extract_total = 1
         self.busy = True
         self._update_buttons()
@@ -733,7 +735,7 @@ class App(tk.Tk):
         try:
             scanning = any(j.state == "scanning" for j in self.jobs)
             if self.busy and self._extract_total:
-                done = sum(1 for j in self.jobs if j.state == "done")
+                done = sum(1 for j in self._batch if j.state == "done")
                 if not self.overall_frame.winfo_manager():
                     self.overall_frame.pack(side="left", fill="x", expand=True, padx=(0, 8))
                 self.overall_bar.stop()
@@ -794,6 +796,7 @@ class App(tk.Tk):
         if not self._pending:
             self.status.set("ファイルを追加し、内容の確認が終わるまでお待ちください。")
             return
+        self._batch = list(self._pending)
         self._extract_total = len(self._pending)
         if self._listing:
             self._listing[0].cancel()
@@ -860,6 +863,7 @@ class App(tk.Tk):
             return
         self.busy = False
         self._extracting = None
+        self._batch = []
         self._update_buttons()
         done = sum(j.state == "done" for j in self.jobs)
         remaining = len(self.jobs) - done
@@ -892,6 +896,7 @@ class App(tk.Tk):
             job.message.configure(text="キャンセルしました。再試行できます。")
         self._extracting = None
         self._pending = []
+        self._batch = []
         self.busy = False
         self.status.set("キャンセルしました。途中のファイルは保存していません。")
         self._update_buttons()
