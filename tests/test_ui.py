@@ -754,5 +754,19 @@ def test_repeated_app_lifecycle():
         app._on_close()
 
 
+def test_close_survives_update_cancel_failure():
+    app = App()
+    app.withdraw()
+    try:
+        with patch.object(app, "_updating") as updating:
+            updating.cancel.side_effect = OSError("boom")
+            app._on_close()
+    finally:
+        try:
+            app.destroy()
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':
     unittest.main()

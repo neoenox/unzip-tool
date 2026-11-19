@@ -144,9 +144,80 @@ def test_ole_hdrop_with_invalid_handle_is_rejected():
     assert not dnd_ole._hdrop_valid(FakeKernel32(0), 0)
 
 
+def test_register_failure_unwinds_com_apartment():
+    import dnd_ole
+    from unittest import mock
+
+    calls = []
+
+    class FakeOle:
+        def OleInitialize(self, _arg):
+            calls.append("init")
+            return dnd_ole.S_OK
+
+        def OleUninitialize(self):
+            calls.append("uninit")
+
+        def RegisterDragDrop(self, *_args):
+            return -1
+
+        def RevokeDragDrop(self, *_args):
+            return 0
+
+    with mock.patch.object(dnd_ole, "_ole32", return_value=FakeOle()), \
+            mock.patch.object(dnd_ole.os, "name", "nt"):
+        assert dnd_ole.register(9001, lambda paths: None) is False
+    assert calls == ["init", "uninit"]
+
+
+def test_revoke_releases_owned_apartment():
+    import dnd_ole
+    from unittest import mock
+
+    calls = []
+
+    class FakeOle:
+        def OleInitialize(self, _arg):
+            calls.append("init")
+            return dnd_ole.S_OK
+
+        def OleUninitialize(self):
+            calls.append("uninit")
+
+        def RegisterDragDrop(self, *_args):
+            return dnd_ole.S_OK
+
+        def RevokeDragDrop(self, *_args):
+            return 0
+
+    with mock.patch.object(dnd_ole, "_ole32", return_value=FakeOle()), \
+            mock.patch.object(dnd_ole.os, "name", "nt"):
+        assert dnd_ole.register(9002, lambda paths: None) is True
+        dnd_ole.revoke(9002)
+    assert calls == ["init", "uninit"]
+
+
+def test_query_interface_failure_clears_output_pointer():
+    import ctypes
+    import dnd_ole
+
+    target = dnd_ole._DropTarget(1, lambda paths: None)
+    ppv = (ctypes.c_void_p * 1)(12345)
+    iid = dnd_ole._guid(0x1234, 0x00)
+    hr = target._vtbl.QueryInterface(None, ctypes.byref(iid), ppv)
+    assert hr == dnd_ole.E_NOINTERFACE
+    assert ppv[0] is None
+
+
 def main() -> int:
     test_ole_hdrop_with_invalid_handle_is_rejected()
     print("PASS test_ole_hdrop_with_invalid_handle_is_rejected")
+    test_register_failure_unwinds_com_apartment()
+    print("PASS test_register_failure_unwinds_com_apartment")
+    test_revoke_releases_owned_apartment()
+    print("PASS test_revoke_releases_owned_apartment")
+    test_query_interface_failure_clears_output_pointer()
+    print("PASS test_query_interface_failure_clears_output_pointer")
     if sys.platform != "win32":
         print("SKIP test_cross_process_robustness (Windows only)")
         return 0

@@ -20,6 +20,8 @@ from unzipper import PasswordRequiredError, archive_needs_password, extract_arch
 VENDOR = Path(__file__).resolve().parent / "vendor"
 ZIP_PW = VENDOR / "pw.zip"
 ZIP_PW_TEXT = "hello pw"
+RAR_PW = VENDOR / "pw.rar"
+RAR_PW_TEXT = "hello rar pw"
 
 
 def test_zip_password_flow() -> None:
@@ -37,6 +39,21 @@ def test_zip_password_flow() -> None:
     dest = Path(tempfile.mkdtemp()) / "ok"
     extract_archive(ZIP_PW, dest, password="testpw".encode())
     assert (dest / "hello.txt").read_text() == ZIP_PW_TEXT
+
+
+def test_rar_password_flow() -> None:
+    assert [e.name for e in list_contents(RAR_PW)] == ["hello.txt"]
+    assert archive_needs_password(RAR_PW) is True
+    for pwd in (None, "bad".encode()):
+        try:
+            extract_archive(RAR_PW, Path(tempfile.mkdtemp()), password=pwd)
+        except PasswordRequiredError:
+            pass
+        else:
+            raise AssertionError(f"expected PasswordRequiredError (pwd={pwd})")
+    result = extract_archive(RAR_PW, Path(tempfile.mkdtemp()) / "ok",
+                             password="testpw".encode())
+    assert (result / "hello.txt").read_text() == RAR_PW_TEXT
 
 
 def test_7z_password_flow() -> None:
@@ -110,6 +127,8 @@ def test_gui_password_ondemand() -> None:
 def main() -> int:
     test_zip_password_flow()
     print("PASS test_zip_password_flow")
+    test_rar_password_flow()
+    print("PASS test_rar_password_flow")
     test_7z_password_flow()
     print("PASS test_7z_password_flow")
     test_no_password_archives()

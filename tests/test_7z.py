@@ -10,7 +10,7 @@ import py7zr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from unzipper import _check_names_safe, default_dest_for, detect_kind, extract_archive, is_supported, list_contents  # noqa: E402
+from unzipper import _check_names_safe, _extract_into, PasswordRequiredError, default_dest_for, detect_kind, extract_archive, is_supported, list_contents  # noqa: E402
 
 
 def make_7z(base: Path, name: str = "t.7z", password: str | None = None) -> Path:
@@ -45,13 +45,24 @@ def test_7z_roundtrip() -> None:
     assert seen[-1][0] == seen[-1][1] and seen[-1][1] > 0, seen
 
 
+def test_7z_reports_files_and_bytes() -> None:
+    tmp = Path(tempfile.mkdtemp(prefix="7zprog-"))
+    zpath = make_7z(tmp)
+    files = []
+    chunks = []
+    _extract_into(zpath, tmp / "staging", on_file=files.append,
+                  on_bytes=lambda done, total: chunks.append((done, total)))
+    assert any(name.endswith("hello.txt") for name in files), files
+    assert chunks and chunks[-1][0] == chunks[-1][1] > 0, chunks
+
+
 def test_7z_password() -> None:
     tmp = Path(tempfile.mkdtemp(prefix="7zpw-"))
     zpath = make_7z(tmp, "pw.7z", password="secret")
     try:
         extract_archive(zpath, tmp / "nope")
-    except Exception:
-        pass  # パスワード無しでは失敗する (形式により例外種別が異なる)
+    except PasswordRequiredError:
+        pass
     else:
         raise AssertionError("expected failure without password")
     dest = tmp / "out"
@@ -79,6 +90,8 @@ def main() -> int:
     print("PASS test_7z_basics")
     test_7z_roundtrip()
     print("PASS test_7z_roundtrip")
+    test_7z_reports_files_and_bytes()
+    print("PASS test_7z_reports_files_and_bytes")
     test_7z_password()
     print("PASS test_7z_password")
     test_7z_evil_names_rejected()
