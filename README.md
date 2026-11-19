@@ -7,7 +7,7 @@ Windows向けのシンプルな解凍ソフト。zip/tarは依存なし、rarの
 - `.zip` (パスワード対応)
 - `.7z` (パスワード対応)
 - `.rar` (RAR4/5、パスワード対応、要UnRAR)
-- `.tar` / `.tar.gz` / `.tgz` / `.tar.bz2` / `.tar.xz`
+- `.tar` / `.tar.gz` / `.tgz` / `.tar.bz2` / `.tbz` / `.tar.xz` / `.txz`
 
 ※ 分割アーカイブ / 自己解凍形式は未対応 (あとで追加可能)
 

@@ -122,6 +122,7 @@ def main(argv=None):
     }
 
     warnings = []
+    created = 0
     print(f"出力先: {out}")
     for name, build in targets.items():
         target = out / name
@@ -135,11 +136,12 @@ def main(argv=None):
             warnings.append(f"{name}: {warning}")
             continue
         print(f"  {name}  {target.stat().st_size:,} bytes")
+        created += 1
 
     shutil.rmtree(work, ignore_errors=True)
     for warning in warnings:
         print(f"WARNING: {warning}")
-    print(f"完了: {len(list(out.glob('*.*'))) - len(warnings)} 個の書庫を作成しました"
+    print(f"完了: {created} 個の書庫を作成しました"
           f"（パスワード付きは {SECRET_PASSWORD}）")
     return 0
 
