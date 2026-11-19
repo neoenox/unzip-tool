@@ -181,3 +181,14 @@ PASS shipped exe: testfile.rar5.rar with UnRAR
   The first line is the check that failed on this machine before the fix (Windows restores `ProgramFiles` for child processes, so the app kept finding `C:\Program Files\WinRAR\UnRAR.exe` even though the check hid every other candidate). An explicit `KANTAN_UNRAR` now takes precedence, so it is deterministic here despite WinRAR being installed.
 - The remaining manual items are unchanged: the Explorer Open With menu itself, a real Explorer drag-and-drop, typing into the password entry, the `F1` / `Esc` / `Ctrl+O` shortcuts, and the installer wizard click-through.
 
+## 2026-11-19 v1.2.3 release verification
+
+- The tag `v1.2.3` points at `5f4c86c` (`chore: v1.2.3 を準備する`). It also contains `56eb4fc` (the four Important fixes with regression tests) and the pre-existing local commit `4dacafd` (mojibake fix for ZIP names written without the UTF-8 flag). The workflow's `Verify release commit is on main` and `Verify application version matches release tag` steps passed.
+- The release run `44508704861` succeeded. `Test`, `Verify release executable`, `Verify RAR in distribution executable`, `Build installer` and `Test installer` all passed.
+- The Release `v1.2.3` is published (neither draft nor pre-release) with two assets:
+  - `KantanKaiko.exe` — 14,676,624 bytes, SHA256 `9bded72fcfed05497796cb8655e1438fc864f11b9c0d3e13c853a1e40efe3054`
+  - `KantanKaiko-Setup-1.2.3.exe` — 16,427,618 bytes, SHA256 `f0dd91a2c131aef11314156357207a6198cdcd831fc3b5e0d7c57c562e44f89d`
+- [`scripts/verify-release.ps1`](../scripts/verify-release.ps1) reported `Checked 22 item(s); 1 failed.` against the published release. Asset sizes and digests, window placement from a saved position (300,200), preserved window size, title, moving the window, exit code 0 on close, destination persistence, geometry saved on close (`900x700+500+400`), off-screen rejection (placed at 104,104) and the rewritten settings all passed.
+- The single failure was `the update check reaches the release feed`: Python's `updates.check_latest()` raised `ssl.SSLCertVerificationError: unable to get issuer certificate` while opening the GitHub API from this machine. The same check had succeeded immediately after publishing and is reproducible in both bash and PowerShell, so it is treated as a local TLS-chain problem rather than a product failure. No product code was changed in response; the release remains published.
+- `scripts/test-installer.ps1` was skipped because an installation already exists for this user, as in the previous release (CI covers it).
+- The remaining manual items are unchanged: the Explorer Open With menu itself, a real Explorer drag-and-drop, typing into the password entry, the `F1` / `Esc` / `Ctrl+O` shortcuts, and the installer wizard click-through.
