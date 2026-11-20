@@ -22,7 +22,7 @@ SUPPORTED_SUFFIXES = (".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tb
 
 RAR_TOOL_HELP = (
     "RARの展開には別途 UnRAR が必要です。"
-    "WinRARをインストールするか、UnRAR.exe を toolsフォルダに置くか、"
+    "WinRARをインストールするか、UnRAR.exe を exeと同じ場所の toolsフォルダに置くか、"
     "環境変数 KANTAN_UNRAR にパスを指定してください。"
 )
 
