@@ -377,7 +377,10 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
                             on_file(info.filename)
                 if on_progress:
                     on_progress(0, 0)  # indeterminate, not a misleading percentage
-                sf.extractall(path=dest)
+                # py7zr 1.1.4 はルートの "." エントリを拒否するため、
+                # 実体のあるメンバーだけを明示指定して展開する。
+                targets = [i.filename for i in sf.files if i.filename != "."]
+                sf.extract(path=dest, targets=targets)
                 if on_bytes:
                     on_bytes(total_bytes, total_bytes)
                 if on_progress:
