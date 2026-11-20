@@ -192,3 +192,13 @@ PASS shipped exe: testfile.rar5.rar with UnRAR
 - The single failure was `the update check reaches the release feed`: Python's `updates.check_latest()` raised `ssl.SSLCertVerificationError: unable to get issuer certificate` while opening the GitHub API from this machine. The same check had succeeded immediately after publishing and is reproducible in both bash and PowerShell, so it is treated as a local TLS-chain problem rather than a product failure. No product code was changed in response; the release remains published.
 - `scripts/test-installer.ps1` was skipped because an installation already exists for this user, as in the previous release (CI covers it).
 - The remaining manual items are unchanged: the Explorer Open With menu itself, a real Explorer drag-and-drop, typing into the password entry, the `F1` / `Esc` / `Ctrl+O` shortcuts, and the installer wizard click-through.
+
+## 2026-11-20 v1.2.4 release verification
+
+- The tag `v1.2.4` points at `e4a2024` (`chore: v1.2.4 を準備する`). The release workflow `44657749949` succeeded: version/tag match, commit-on-main check, tests, exe build, RAR verification in the distribution executable, installer build and installer test all passed. The push-triggered checks run `44657727850` also succeeded (windows and tests-newer-python).
+- The Release `v1.2.4` is published (neither draft nor pre-release) with two assets:
+  - `KantanKaiko.exe` — 14,683,469 bytes, SHA256 `c5f63545795b20a93baaae14132006047ac8e68cb219e63fc9bddab689c3d9ef`
+  - `KantanKaiko-Setup-1.2.4.exe` — 16,434,645 bytes, SHA256 `9516d478240c948c13233aec6d981c4dcd967227db24177c23ab2dc1d7505ec1`
+- This release contains the py7zr 1.1.4 security update (CVE-2026-23879), the 7z dot-entry compatibility fix, and the non-goal / UnRAR guidance documentation alignment.
+- Manual Explorer verification: **未実施**. The user explicitly approved skipping the manual QA gate before tagging. The Explorer Open With menu, real drag-and-drop, password entry typing, `F1` / `Esc` / `Ctrl+O`, installer wizard click-through and the 更新を確認 button were not checked by a person for this version.
+- `scripts/verify-release.ps1` was not run locally for this release; the automated release assets and CI results above are the evidence recorded here.
