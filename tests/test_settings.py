@@ -36,6 +36,14 @@ class SettingsFileTests(unittest.TestCase):
                 self.path.write_text(json.dumps({'last_update_check': value}), encoding='utf-8')
                 self.assertEqual(settings.Settings.load(self.path).last_update_check, 0.0)
 
+    def test_update_notice_round_trip_and_validation(self):
+        settings.Settings(update_notice='1.2.6').save(self.path)
+        self.assertEqual(settings.Settings.load(self.path).update_notice, '1.2.6')
+        for value in ('v1.2.6', '1.2', 5):
+            with self.subTest(value=value):
+                self.path.write_text(json.dumps({'update_notice': value}), encoding='utf-8')
+                self.assertEqual(settings.Settings.load(self.path).update_notice, '')
+
     def test_round_trip_keeps_japanese_path(self):
         dest = self.base / '日本語 フォルダ'
         dest.mkdir()
