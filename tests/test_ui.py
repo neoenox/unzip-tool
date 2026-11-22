@@ -138,6 +138,16 @@ class UITests(unittest.TestCase):
                 constructor.assert_called_once_with('update', '')
                 self.assertGreater(self.app._settings.last_update_check, 0)
 
+    def test_update_check_falls_back_to_thread_when_spawn_fails(self):
+        from unittest.mock import Mock
+        task = Mock()
+        task.poll.return_value = []
+        with patch('app.BackgroundTask', side_effect=OSError('spawn blocked')), \
+                patch('app.ThreadTask', return_value=task) as thread:
+            self.app.check_updates()
+        thread.assert_called_once_with('update', '')
+        self.assertEqual(self.app._update_phase, 'checking')
+
     def test_failed_update_shows_guidance_and_can_be_retried(self):
         from unittest.mock import Mock
         task = Mock()

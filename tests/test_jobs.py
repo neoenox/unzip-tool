@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import jobs
-from jobs import BackgroundTask
+from jobs import BackgroundTask, ThreadTask
 
 
 class JobTests(unittest.TestCase):
@@ -200,6 +200,19 @@ class JobTests(unittest.TestCase):
         with mock.patch('updates.download_update', side_effect=ValueError('検証失敗')):
             jobs._work(connection, 'download', package, None, None)
         self.assertEqual(connection.send.call_args.args[0], ('error', '検証失敗'))
+
+    def test_thread_task_reports_result_without_spawn(self):
+        payload = {'newer': False, 'version': '1.2.8', 'url': 'x', 'update': None}
+        with mock.patch('updates.check_latest', return_value=payload):
+            task = ThreadTask('update', '')
+            end = time.monotonic() + 5
+            events = []
+            while time.monotonic() < end:
+                events.extend(task.poll())
+                if any(kind == 'done' for kind, _ in events):
+                    break
+                time.sleep(0.02)
+        self.assertEqual(events[-1], ('done', payload))
 
 if __name__ == '__main__':
     unittest.main()

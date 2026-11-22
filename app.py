@@ -12,7 +12,7 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
-from jobs import BackgroundTask
+from jobs import BackgroundTask, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
 from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
@@ -1062,6 +1062,13 @@ class App(tk.Tk):
         last = self._settings.last_update_check
         return last <= 0 or time.time() - last >= UPDATE_INTERVAL
 
+    def _new_update_task(self, operation, archive):
+        """子プロセスが作れない端末ではスレッド版に切り替える。"""
+        try:
+            return BackgroundTask(operation, archive)
+        except Exception:
+            return ThreadTask(operation, archive)
+
     def _auto_check_updates(self) -> None:
         self._auto_update_after = None
         if os.environ.get('UNZIPTOOL_NO_UPDATE_CHECK'):
@@ -1079,7 +1086,7 @@ class App(tk.Tk):
             return
         self._auto_check = auto
         try:
-            self._updating = BackgroundTask('update', '')
+            self._updating = self._new_update_task('update', '')
             self._update_phase = 'checking'
             self.update_btn.configure(text='確認中…', state='disabled')
             if auto:
@@ -1094,7 +1101,7 @@ class App(tk.Tk):
         self._update_package = package
         self.update_text.set(f"新版 v{package['version']} をダウンロードしています…")
         try:
-            self._updating = BackgroundTask('download', package)
+            self._updating = self._new_update_task('download', package)
             self._update_phase = 'downloading'
             self.update_btn.configure(text='ダウンロード中…', state='disabled')
         except Exception as error:
