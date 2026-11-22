@@ -172,5 +172,25 @@ class JobTests(unittest.TestCase):
         self.assertFalse(list(self.base.glob('.kantan-*')))
 
 
+    def test_download_operation_reports_progress_and_result(self):
+        package = {'url': 'https://example.invalid/setup.exe', 'size': 4, 'sha256': '0' * 64}
+        connection = mock.Mock()
+
+        def fake_download(_package, on_progress=None):
+            on_progress(2, 4)
+            on_progress(4, 4)
+            return 'C:/fake/KantanKaiko-Setup.exe'
+
+        with mock.patch('updates.download_update', side_effect=fake_download):
+            jobs._work(connection, 'download', package, None, None)
+        events = [call.args[0] for call in connection.send.call_args_list]
+        self.assertEqual(events[0], ('bytes', (2, 4)))
+        self.assertEqual(events[-1], ('done', 'C:/fake/KantanKaiko-Setup.exe'))
+
+        connection = mock.Mock()
+        with mock.patch('updates.download_update', side_effect=ValueError('検証失敗')):
+            jobs._work(connection, 'download', package, None, None)
+        self.assertEqual(connection.send.call_args.args[0], ('error', '検証失敗'))
+
 if __name__ == '__main__':
     unittest.main()

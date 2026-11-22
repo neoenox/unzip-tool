@@ -122,8 +122,8 @@ class UITests(unittest.TestCase):
     def test_auto_update_is_gated_by_env_and_interval(self):
         from unittest.mock import Mock
         task = Mock()
-        task.poll.return_value = [('done', {'newer': False, 'version': '1.2.5',
-                                            'url': 'https://github.com/neoenox/unzip-tool/releases/tag/v1.2.5',
+        task.poll.return_value = [('done', {'newer': False, 'version': '1.2.6',
+                                            'url': 'https://github.com/neoenox/unzip-tool/releases/tag/v1.2.6',
                                             'update': None})]
         with patch('app.BackgroundTask', return_value=task) as constructor:
             self.app._auto_check_updates()
