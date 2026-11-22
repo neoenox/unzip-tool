@@ -8,3 +8,4 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolate_app_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("KANTAN_SETTINGS_DIR", str(tmp_path / "kantan-settings"))
+    monkeypatch.setenv("UNZIPTOOL_NO_UPDATE_CHECK", "1")

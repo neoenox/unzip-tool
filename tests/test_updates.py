@@ -1,5 +1,7 @@
+import hashlib
 import io
 import json
+import shutil
 import ssl
 import sys
 import unittest
@@ -8,7 +10,7 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from updates import check_latest
+from updates import check_latest, _installer_asset, download_update  # noqa: E402
 
 
 class UpdateTests(unittest.TestCase):
@@ -41,6 +43,59 @@ class UpdateTests(unittest.TestCase):
             with patch('updates.urlopen', side_effect=failure):
                 with self.assertRaisesRegex(ValueError, '証明書'):
                     check_latest('1.0.0')
+
+    def release_with_asset(self, tag='v1.10.0'):
+        payload = b'installer-bytes'
+        name = f'KantanKaiko-Setup-{tag[1:]}.exe'
+        release = {
+            'tag_name': tag, 'draft': False, 'prerelease': False,
+            'assets': [{
+                'name': name,
+                'browser_download_url':
+                    f'https://github.com/neoenox/unzip-tool/releases/download/{tag}/{name}',
+                'size': len(payload),
+                'digest': 'sha256:' + hashlib.sha256(payload).hexdigest(),
+            }],
+        }
+        return io.BytesIO(json.dumps(release).encode()), payload
+
+    def test_installer_asset_is_limited_to_official_release(self):
+        body, _payload = self.release_with_asset()
+        with patch('updates.urlopen', return_value=body):
+            result = check_latest('1.9.0')
+        self.assertTrue(result['newer'])
+        package = result['update']
+        self.assertEqual(package['name'], 'KantanKaiko-Setup-1.10.0.exe')
+        self.assertEqual(package['version'], '1.10.0')
+        self.assertEqual(len(package['sha256']), 64)
+
+        release = json.loads(self.release_with_asset()[0].getvalue())
+        bad = dict(release['assets'][0])
+        bad['browser_download_url'] = 'https://example.com/setup.exe'
+        with self.assertRaisesRegex(ValueError, '公式リリース'):
+            _installer_asset({**release, 'assets': [bad]}, 'v1.10.0')
+        bad = dict(release['assets'][0], digest='sha256:bad')
+        with self.assertRaisesRegex(ValueError, '検証情報'):
+            _installer_asset({**release, 'assets': [bad]}, 'v1.10.0')
+
+    def test_download_update_verifies_digest_and_progress(self):
+        body, payload = self.release_with_asset()
+        with patch('updates.urlopen', return_value=body):
+            package = check_latest('1.9.0')['update']
+        seen = []
+        with patch('updates.urlopen', return_value=io.BytesIO(payload)):
+            path = download_update(package, on_progress=lambda done, total: seen.append((done, total)))
+        try:
+            self.assertEqual(Path(path).read_bytes(), payload)
+            self.assertEqual(seen[-1], (len(payload), len(payload)))
+        finally:
+            shutil.rmtree(Path(path).parent, ignore_errors=True)
+
+        with patch('updates.urlopen', return_value=io.BytesIO(payload)):
+            with self.assertRaisesRegex(ValueError, '検証に失敗'):
+                download_update({**package, 'sha256': '0' * 64})
+        with self.assertRaisesRegex(ValueError, '公式リリース以外'):
+            download_update({**package, 'url': 'https://example.com/setup.exe'})
 
 
 if __name__ == '__main__':
