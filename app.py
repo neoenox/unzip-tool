@@ -684,8 +684,8 @@ class App(tk.Tk):
         if self.selected:
             self.select_job(self.selected)
         self.drop_title.configure(text=f"{len(self.jobs)} 件の書庫 · ファイルを追加できます" if self.jobs else "ここにファイルをドロップ")
-        if rejected:
         messages = []
+        if rejected:
             messages.append("追加できません（未対応またはファイルがありません）: " + ", ".join(rejected))
         if truncated:
             messages.append(f"一度に追加できるのは{MAX_FILES}件までです。残り{truncated}件は追加されていません。")
