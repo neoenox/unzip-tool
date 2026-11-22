@@ -182,8 +182,10 @@ class App(tk.Tk):
                 self.remove_job(self.selected)
         elif keysym == "Up":
             self._move_selection(-1)
+            self._focus_selected_card()
         elif keysym == "Down":
             self._move_selection(1)
+            self._focus_selected_card()
         elif keysym.lower() == "o" and (event.state & 0x4):
             if not self.busy:
                 self.choose_archive()
@@ -684,7 +686,36 @@ class App(tk.Tk):
         self._syncing = False
         for item in self.jobs:
             self._sync_card_chrome(item)
+        self._scroll_card_into_view(job)
 
+    def _scroll_card_into_view(self, job):
+        """選択したカードが表示範囲外にあるときだけスクロールする。"""
+        try:
+            top = job.card.winfo_y()
+            bottom = top + job.card.winfo_height()
+            area = self.canvas.bbox("all")
+            viewport = self.canvas.winfo_height()
+            if not area or viewport <= 0:
+                return
+            total = area[3] - area[1]
+            if total <= viewport:
+                return
+            first = self.canvas.yview()[0] * total
+            if top >= first and bottom <= first + viewport:
+                return
+            offset = top if top < first else bottom - viewport
+            self.canvas.yview_moveto(max(0, min(offset, total - viewport)) / total)
+        except Exception:
+            pass
+
+    def _focus_selected_card(self):
+        """矢印キーで選んだカードへフォーカスを移す。入力欄は _on_key で除外される。"""
+        if self.selected is None:
+            return
+        try:
+            self.selected.name_btn.focus_set()
+        except Exception:
+            pass
     def _update_buttons(self):
         candidates = any(j.state in ("ready", "password", "failed", "cancelled") for j in self.jobs)
         self.extract_btn.configure(state="normal" if candidates and not self.busy else "disabled",
@@ -1000,7 +1031,7 @@ class App(tk.Tk):
                 else:
                     self.update_text.set(f"最新公開版 v{payload['version']} · このアプリ v{VERSION}")
             else:
-                self.update_text.set('更新を確認できません。接続を確認して再試行してください。')
+                self.update_text.set(payload or '更新を確認できません。接続を確認して再試行してください。')
             break
 
     def _poll_listing(self):
@@ -1032,7 +1063,7 @@ class App(tk.Tk):
                     if job.details_wrap.winfo_manager():
                         self._render_card_tree(job)
                     if self.selected is job:
-                        self.status.set(f"{len(job.entries)} 件" + (" / パスワードを入力してください。" if job.needs_password else " / 解凍できます。"))
+                        self.status.set(f"{count:,} ファイル" + (" / パスワードを入力してください。" if job.needs_password else " / 解凍できます。"))
                 else:
                     job.state = "password" if kind == "password" else "failed"
                     job.summary.configure(text="パスワードが必要です" if kind == "password" else "内容を確認できません")

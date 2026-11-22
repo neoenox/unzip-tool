@@ -106,17 +106,17 @@ class UITests(unittest.TestCase):
             self.app.check_updates()
         browser.assert_called_once_with('https://github.com/neoenox/unzip-tool/releases/tag/v1.2.0')
 
-    def test_failed_update_can_be_retried(self):
+    def test_failed_update_shows_guidance_and_can_be_retried(self):
         from unittest.mock import Mock
         task = Mock()
-        task.poll.return_value = [('error', 'offline')]
+        guidance = '更新情報を取得できません。証明書やプロキシの設定を確認して再試行してください。'
+        task.poll.return_value = [('error', guidance)]
         with patch('app.BackgroundTask', return_value=task):
             self.app.check_updates()
         self.app._poll_update()
         self.assertEqual(str(self.app.update_btn.cget('state')), 'normal')
         self.assertIsNone(self.app._updating)
-        self.assertIn('再試行', self.app.update_text.get())
-
+        self.assertEqual(self.app.update_text.get(), guidance)
     def test_card_click_selects_job(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
         self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
@@ -472,9 +472,45 @@ class UITests(unittest.TestCase):
         key('Delete')
         self.assertEqual(len(self.app.jobs), 1)
         self.assertIs(self.app.jobs[0], first)
+
         # 入力欄フォーカス中は発火しない
         key('Delete', widget=first.pw_entry)
         self.assertEqual(len(self.app.jobs), 1)
+
+    def test_arrow_keys_focus_the_selected_card(self):
+        from types import SimpleNamespace
+        self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
+        self.pump(lambda: len(self.app.jobs) == 2)
+        self.app.deiconify()
+        self.addCleanup(self.app.withdraw)
+        self.app.update()
+
+        def key(keysym):
+            self.app._on_key(SimpleNamespace(widget=self.app, keysym=keysym, state=0))
+
+        key('Up')
+        self.assertIs(self.app.focus_get(), self.app.selected.name_btn)
+        key('Down')
+        self.assertIs(self.app.focus_get(), self.app.selected.name_btn)
+
+    def test_selection_scrolls_card_into_view(self):
+        paths = []
+        for index in range(15):
+            path = self.base / f'archive{index}.zip'
+            path.write_bytes(b'not a zip')
+            paths.append(str(path))
+        self.app.on_drop_files(paths)
+        self.pump(lambda: len(self.app.jobs) == 15)
+        self.app.update_idletasks()
+        last = self.app.jobs[-1]
+        self.app.select_job(last)
+        self.app.update_idletasks()
+        area = self.app.canvas.bbox('all')
+        top = self.app.canvas.yview()[0] * (area[3] - area[1])
+        bottom = top + self.app.canvas.winfo_height()
+        self.assertGreater(top, 0)
+        self.assertLessEqual(last.card.winfo_y(), bottom)
+        self.assertGreaterEqual(last.card.winfo_y() + last.card.winfo_height(), top)
 
     def test_keyboard_return_starts_extract(self):
         from types import SimpleNamespace

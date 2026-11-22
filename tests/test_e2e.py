@@ -119,7 +119,7 @@ def test_gui_extract_e2e() -> None:
         if sys.platform == "win32":
             assert app._dnd_enabled, "DnD hook not enabled"
         app.archive_var.set(str(zpath))
-        assert pump(app, lambda: "2 件" in app.status.get()), f"list failed: {app.status.get()}"
+        assert pump(app, lambda: "2 ファイル" in app.status.get()), f"list failed: {app.status.get()}"
         app.dest_var.set(str(dest))
         app.start_extract()
         ok = pump(app, lambda: "完了" in app.status.get())
@@ -142,7 +142,7 @@ def test_os_level_drop_e2e() -> None:
         send_drop(app.winfo_id(), [str(zpath)])
         ok = pump(app, lambda: app.archive_var.get() == str(zpath))
         assert ok, f"drop not reflected: {app.archive_var.get()!r}"
-        assert pump(app, lambda: "2 件" in app.status.get()), f"list failed: {app.status.get()}"
+        assert pump(app, lambda: "2 ファイル" in app.status.get()), f"list failed: {app.status.get()}"
     finally:
         restore_dialogs(orig)
         app._on_close()

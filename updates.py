@@ -1,6 +1,7 @@
 """Manual, bounded checks against the application's official release feed."""
 import json
 import re
+import ssl
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -8,6 +9,13 @@ from version import VERSION
 
 API_URL = 'https://api.github.com/repos/neoenox/unzip-tool/releases/latest'
 RELEASE_URL = 'https://github.com/neoenox/unzip-tool/releases'
+
+
+def _is_certificate_error(error: Exception) -> bool:
+    """urlopen raises SSLCertVerificationError directly or wrapped in URLError."""
+    if isinstance(error, ssl.SSLCertVerificationError):
+        return True
+    return isinstance(getattr(error, 'reason', None), ssl.SSLCertVerificationError)
 
 
 def version_number(value):
@@ -32,6 +40,8 @@ def check_latest(current=VERSION):
         return {'version': tag.removeprefix('v'), 'newer': newer,
                 'url': f'{RELEASE_URL}/tag/{tag}'}
     except (URLError, TimeoutError, OSError) as error:
+        if _is_certificate_error(error):
+            raise ValueError('更新情報を取得できません。証明書やプロキシの設定を確認して再試行してください。') from error
         raise ValueError('更新情報を取得できません。インターネット接続を確認して再試行してください。') from error
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError('更新情報を読み取れませんでした。後でもう一度お試しください。') from error

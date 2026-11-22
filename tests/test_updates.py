@@ -1,5 +1,6 @@
 import io
 import json
+import ssl
 import sys
 import unittest
 from pathlib import Path
@@ -33,6 +34,13 @@ class UpdateTests(unittest.TestCase):
         with patch('updates.urlopen', side_effect=URLError('offline')):
             with self.assertRaisesRegex(ValueError, '接続'):
                 check_latest('1.0.0')
+
+    def test_certificate_errors_get_distinct_guidance(self):
+        certificate_error = ssl.SSLCertVerificationError('unable to get issuer certificate')
+        for failure in (certificate_error, URLError(certificate_error)):
+            with patch('updates.urlopen', side_effect=failure):
+                with self.assertRaisesRegex(ValueError, '証明書'):
+                    check_latest('1.0.0')
 
 
 if __name__ == '__main__':
