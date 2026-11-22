@@ -16,6 +16,8 @@ from __future__ import annotations
 import ctypes
 import os
 
+from dnd_common import MAX_FILES, hdrop_valid as _shared_hdrop_valid, query_paths as _shared_query_paths
+
 HRESULT = ctypes.c_long
 ULONG = ctypes.c_ulong
 DWORD = ctypes.c_ulong
@@ -29,8 +31,6 @@ S_OK = 0
 S_FALSE = 1
 E_NOINTERFACE = -2147467262  # 0x80004002
 
-MAX_FILES = 64  # dnd.py と揃える
-GMEM_INVALID_HANDLE = 0x8000  # GlobalFlags(): 無効ハンドル
 
 # WINFUNCTYPE は Windows のみ。非 Windows でも import できるようにする
 # (実行時に register() が False を返すので、その先は使われない)。
@@ -89,6 +89,8 @@ _DragLeave = _FUNCTYPE(HRESULT, ctypes.c_void_p)
 _Drop = _DragEnter
 _GetData = _FUNCTYPE(
     HRESULT, ctypes.c_void_p, ctypes.POINTER(FORMATETC), ctypes.POINTER(STGMEDIUM))
+_QueryGetData = _FUNCTYPE(
+    HRESULT, ctypes.c_void_p, ctypes.POINTER(FORMATETC))
 
 
 class _Vtbl(ctypes.Structure):
@@ -105,6 +107,8 @@ class _Vtbl(ctypes.Structure):
 
 # hwnd -> ドラッグ中か (コールバックが書き、poll が読む)
 _drag_over: dict[int, bool] = {}
+# hwnd -> 直近の DragEnter で CF_HDROP が提供されていたか
+_drag_allowed: dict[int, bool] = {}
 # hwnd -> 登録済みターゲット (参照保持しないとGCで落ちる)
 _targets: dict[int, "_DropTarget"] = {}
 _owns_apartment = False
@@ -115,38 +119,29 @@ def _same_guid(a: GUID, b: GUID) -> bool:
     return ctypes.string_at(ctypes.byref(a), size) == ctypes.string_at(ctypes.byref(b), size)
 
 
-def _query_paths(hdrop) -> list[str]:
+def _query_paths(hdrop) -> tuple[list[str], int]:
     """HDROP (CF_HDROP の STGMEDIUM) からパスを取り出す。読み取り専用。"""
     from ctypes import wintypes
     shell32 = ctypes.windll.shell32
     shell32.DragQueryFileW.argtypes = [wintypes.HANDLE, wintypes.UINT, wintypes.LPWSTR, wintypes.UINT]
     shell32.DragQueryFileW.restype = wintypes.UINT
-    count = shell32.DragQueryFileW(hdrop, 0xFFFFFFFF, None, 0)
-    paths: list[str] = []
-    for i in range(min(count, MAX_FILES)):
-        length = shell32.DragQueryFileW(hdrop, i, None, 0)
-        buf = ctypes.create_unicode_buffer(length + 1)
-        shell32.DragQueryFileW(hdrop, i, buf, length + 1)
-        paths.append(buf.value)
-    return paths
+    return _shared_query_paths(shell32, hdrop)
 
 
 def _hdrop_valid(kernel32, hdrop) -> bool:
     """OLE経由の HGLOBAL が自プロセスから触れるか確認する (dnd.py と同じ基準)。"""
-    if not hdrop:
-        return False
     try:
         kernel32.GlobalFlags.argtypes = [ctypes.c_void_p]
         kernel32.GlobalFlags.restype = ctypes.c_uint
-        return (kernel32.GlobalFlags(hdrop) & GMEM_INVALID_HANDLE) == 0
     except Exception:
-        return False
+        pass
+    return _shared_hdrop_valid(kernel32, hdrop)
 
 
-def _paths_from_data_object(data_obj) -> list[str]:
-    """IDataObject から CF_HDROP を取り出す。失敗時は空リスト。"""
+def _paths_from_data_object(data_obj) -> tuple[list[str], int]:
+    """IDataObject から CF_HDROP を取り出す。失敗時は空結果。"""
     if not data_obj:
-        return []
+        return [], 0
     ole32 = ctypes.windll.ole32
     ole32.ReleaseStgMedium.argtypes = [ctypes.POINTER(STGMEDIUM)]
     ole32.ReleaseStgMedium.restype = None
@@ -156,15 +151,29 @@ def _paths_from_data_object(data_obj) -> list[str]:
                     lindex=-1, tymed=TYMED_HGLOBAL)
     stg = STGMEDIUM()
     if get_data(data_obj, ctypes.byref(fmt), ctypes.byref(stg)) != 0:
-        return []
+        return [], 0
     try:
         if stg.tymed != TYMED_HGLOBAL or not stg.hGlobal:
-            return []
+            return [], 0
         if not _hdrop_valid(ctypes.windll.kernel32, stg.hGlobal):
-            return []
+            return [], 0
         return _query_paths(stg.hGlobal)
     finally:
         ole32.ReleaseStgMedium(ctypes.byref(stg))
+
+
+def _has_hdrop(data_obj) -> bool:
+    """IDataObject が CF_HDROP を提供するか。形式照会に失敗したら対象外。"""
+    if not data_obj:
+        return False
+    try:
+        vtable = ctypes.cast(data_obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
+        query = _QueryGetData(vtable[5])  # IUnknown(3) + GetData + GetDataHere の次
+        fmt = FORMATETC(cfFormat=CF_HDROP, ptd=None, dwAspect=DVASPECT_CONTENT,
+                        lindex=-1, tymed=TYMED_HGLOBAL)
+        return query(data_obj, ctypes.byref(fmt)) == S_OK
+    except Exception:
+        return False
 
 
 class _DropTarget:
@@ -209,27 +218,32 @@ class _DropTarget:
 
     # --- IDropTarget ---
     def _drag_enter(self, this, data_obj, key_state, pt, effect):
-        _drag_over[self.hwnd] = True
+        allowed = _has_hdrop(data_obj)
+        _drag_allowed[self.hwnd] = allowed
+        _drag_over[self.hwnd] = allowed
         if effect:
-            effect[0] = DROPEFFECT_COPY
+            effect[0] = DROPEFFECT_COPY if allowed else 0
         return S_OK
 
     def _drag_over(self, this, key_state, pt, effect):
-        _drag_over[self.hwnd] = True
+        allowed = _drag_allowed.get(self.hwnd, False)
+        _drag_over[self.hwnd] = allowed
         if effect:
-            effect[0] = DROPEFFECT_COPY
+            effect[0] = DROPEFFECT_COPY if allowed else 0
         return S_OK
 
     def _drag_leave(self, this):
         _drag_over[self.hwnd] = False
+        _drag_allowed[self.hwnd] = False
         return S_OK
 
     def _drop(self, this, data_obj, key_state, pt, effect):
         _drag_over[self.hwnd] = False
+        _drag_allowed[self.hwnd] = False
         try:
-            paths = _paths_from_data_object(data_obj)
-            if paths:
-                self._store_paths(paths)
+            paths, skipped = _paths_from_data_object(data_obj)
+            if paths or skipped:
+                self._store_paths(paths, skipped)
         except Exception:
             pass
         if effect:
@@ -253,7 +267,7 @@ def _ole32():
 def register(hwnd: int, store_paths) -> bool:
     """hwnd に OLE ドロップターゲットを登録する。成功で True。
 
-    store_paths(paths) はドロップされたパス列の受け渡し先 (Tk 非依存)。
+    store_paths(paths, skipped) はドロップされたパス列と上限超過件数の受け渡し先 (Tk 非依存)。
     """
     if os.name != "nt" or not hwnd:
         return False
@@ -275,6 +289,7 @@ def register(hwnd: int, store_paths) -> bool:
         _owns_apartment = _owns_apartment or owns
         _targets[int(hwnd)] = target
         _drag_over[int(hwnd)] = False
+        _drag_allowed[int(hwnd)] = False
         return True
     except Exception:
         if owns:
@@ -297,6 +312,7 @@ def revoke(hwnd: int) -> None:
         pass
     _targets.pop(int(hwnd), None)
     _drag_over.pop(int(hwnd), None)
+    _drag_allowed.pop(int(hwnd), None)
     if _owns_apartment and not _targets:
         try:
             _ole32().OleUninitialize()

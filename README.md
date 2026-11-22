@@ -27,6 +27,18 @@ UnRARはフリーウェア ([rarlab](https://www.rarlab.com/rar_add.htm) のUnRA
 入手手順と検出順は [tools/README.md](tools/README.md)、ライセンス全文は
 [tools/license.txt](tools/license.txt)。本リポジトリはUnRARのバイナリを配布しない。
 
+## 開発環境の構築
+
+Python 3.11 を推奨（CI の exe ビルドと同じ版）。リポジトリ直下で次を実行する。
+
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements.txt -r requirements-build.txt
+```
+
+RAR の実展開テストには UnRAR が必要。[tools/README.md](tools/README.md) の手順で `tools/UnRAR.exe` を配置する（バイナリはgit管理外）。テストの実行方法は後述の「テスト」を参照。
+
 ## 使い方
 
 ```bat
@@ -103,6 +115,12 @@ git push origin v1.2.5
 
 ```bat
 python tests/run_all.py
+```
+
+pytest は `run_all.py` からは実行されない pytest 専用回帰（更新確認キャンセルの終了処理など）も拾う。完全チェックには次も実行する。
+
+```bat
+python -m pytest --tb=short -q
 ```
 
 安全性、キャンセル、異常終了、7z、RARと、実物のAppウィンドウで複数書庫・パスワード再試行・GUI解凍・同一プロセス内DnD・別プロセス通知の堅牢性を検証する。RARの実展開テストはUnRAR未検出時にスキップする。

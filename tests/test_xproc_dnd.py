@@ -166,7 +166,7 @@ def test_register_failure_unwinds_com_apartment():
 
     with mock.patch.object(dnd_ole, "_ole32", return_value=FakeOle()), \
             mock.patch.object(dnd_ole.os, "name", "nt"):
-        assert dnd_ole.register(9001, lambda paths: None) is False
+        assert dnd_ole.register(9001, lambda paths, skipped: None) is False
     assert calls == ["init", "uninit"]
 
 
@@ -192,7 +192,7 @@ def test_revoke_releases_owned_apartment():
 
     with mock.patch.object(dnd_ole, "_ole32", return_value=FakeOle()), \
             mock.patch.object(dnd_ole.os, "name", "nt"):
-        assert dnd_ole.register(9002, lambda paths: None) is True
+        assert dnd_ole.register(9002, lambda paths, skipped: None) is True
         dnd_ole.revoke(9002)
     assert calls == ["init", "uninit"]
 
@@ -201,13 +201,95 @@ def test_query_interface_failure_clears_output_pointer():
     import ctypes
     import dnd_ole
 
-    target = dnd_ole._DropTarget(1, lambda paths: None)
+    target = dnd_ole._DropTarget(1, lambda paths, skipped: None)
     ppv = (ctypes.c_void_p * 1)(12345)
     iid = dnd_ole._guid(0x1234, 0x00)
     hr = target._vtbl.QueryInterface(None, ctypes.byref(iid), ppv)
     assert hr == dnd_ole.E_NOINTERFACE
     assert ppv[0] is None
 
+
+def _data_object_for_dnd_ole(dnd_ole, supported):
+    query = dnd_ole._QueryGetData(
+        lambda this, fmt: dnd_ole.S_OK if supported else dnd_ole.S_FALSE)
+    vtbl = (ctypes.c_void_p * 6)()
+    vtbl[5] = ctypes.cast(query, ctypes.c_void_p).value
+    iface = (ctypes.c_void_p * 1)(
+        ctypes.cast(ctypes.pointer(vtbl), ctypes.c_void_p).value)
+    return ctypes.cast(ctypes.pointer(iface), ctypes.c_void_p), (query, vtbl, iface)
+
+
+def test_ole_drag_requires_hdrop():
+    import dnd_ole
+
+    target = dnd_ole._DropTarget(9100, lambda paths, skipped: None)
+    effect = ctypes.c_ulong(0)
+    pt = dnd_ole.POINT(0, 0)
+    no_files, keep_no = _data_object_for_dnd_ole(dnd_ole, False)
+    target._vtbl.DragEnter(target.pointer, no_files, 1, pt, ctypes.pointer(effect))
+    assert effect.value == 0
+    assert not dnd_ole.is_drag_over(9100)
+    files, keep_yes = _data_object_for_dnd_ole(dnd_ole, True)
+    target._vtbl.DragEnter(target.pointer, files, 1, pt, ctypes.pointer(effect))
+    assert effect.value == dnd_ole.DROPEFFECT_COPY
+    assert dnd_ole.is_drag_over(9100)
+    target._vtbl.DragOver(target.pointer, 1, pt, ctypes.pointer(effect))
+    assert effect.value == dnd_ole.DROPEFFECT_COPY
+    target._vtbl.DragLeave(target.pointer)
+    assert not dnd_ole.is_drag_over(9100)
+
+
+def test_dropfiles_not_forwarded_and_reports_limit():
+    import dnd
+    from types import SimpleNamespace
+    from unittest import mock
+    if sys.platform != "win32":
+        return
+
+    calls = []
+
+    class FakeShell:
+        def DragQueryFileW(self, hdrop, index, buf, size):
+            if index == 0xFFFFFFFF:
+                return dnd.MAX_FILES + 2
+            if buf is None:
+                return 5
+            buf.value = 'x.zip'
+            return 5
+
+        def DragFinish(self, hdrop):
+            calls.append(('finish', hdrop))
+
+        def DragAcceptFiles(self, hwnd, enabled):
+            pass
+
+    class FakeKernel:
+        def GlobalFlags(self, hdrop):
+            return 0
+
+    wndproc = ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_uint,
+                               ctypes.c_void_p, ctypes.c_void_p)
+
+    def call_proc(*args):
+        calls.append(('forward', args))
+        return 0
+
+    widget = SimpleNamespace(update_idletasks=lambda: None, winfo_id=lambda: 9101)
+    procs = (SimpleNamespace(IsWindow=lambda hwnd: True), FakeShell(), FakeKernel(),
+             lambda hwnd, index, proc: 123, call_proc, wndproc)
+    with mock.patch.object(dnd, '_setup_procs', return_value=procs), \
+            mock.patch.object(dnd.dnd_ole, 'register', return_value=True):
+        assert dnd.enable_drop(widget) is True
+        handler = dnd._hooks[9101][1]
+        handler(9101, WM_DROPFILES, 42, 0)
+    try:
+        assert calls == [('finish', 42)], calls
+        assert len(dnd._pending[9101][0]) == dnd.MAX_FILES
+        assert dnd.take_truncated_files(widget) == 2
+    finally:
+        dnd._hooks.pop(9101, None)
+        dnd._pending.pop(9101, None)
+        dnd._truncated.pop(9101, None)
 
 def main() -> int:
     test_ole_hdrop_with_invalid_handle_is_rejected()
@@ -218,6 +300,10 @@ def main() -> int:
     print("PASS test_revoke_releases_owned_apartment")
     test_query_interface_failure_clears_output_pointer()
     print("PASS test_query_interface_failure_clears_output_pointer")
+    test_ole_drag_requires_hdrop()
+    print("PASS test_ole_drag_requires_hdrop")
+    test_dropfiles_not_forwarded_and_reports_limit()
+    print("PASS test_dropfiles_not_forwarded_and_reports_limit")
     if sys.platform != "win32":
         print("SKIP test_cross_process_robustness (Windows only)")
         return 0

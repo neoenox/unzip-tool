@@ -118,14 +118,18 @@ class Settings:
 
     def save(self, path: Path | None = None) -> bool:
         target = Path(path) if path is not None else settings_path()
+        temporary = target.with_name(target.name + ".tmp")
         payload = {"version": 1, "geometry": self.geometry, "last_dest": self.last_dest}
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            temporary = target.with_name(target.name + ".tmp")
             temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
                                  encoding="utf-8")
             os.replace(temporary, target)
         except OSError:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
             return False
         return True
 

@@ -4,6 +4,7 @@ import errno
 import os
 import stat
 import sys
+import importlib
 import tarfile
 import tempfile
 import unittest
@@ -22,6 +23,18 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('壊れている', error_message(zipfile.BadZipFile('Bad CRC')))
         self.assertIn('壊れている', error_message(rarfile.RarCRCError('CRC failed')))
         self.assertIn('アクセス', error_message(PermissionError(errno.EACCES, 'Permission denied')))
+
+    def test_error_message_works_without_optional_archivers(self):
+        real_import = importlib.import_module
+
+        def fake_import(name, *args, **kwargs):
+            if name in ('py7zr', 'rarfile'):
+                raise ImportError(name)
+            return real_import(name, *args, **kwargs)
+
+        with patch('unzipper.importlib.import_module', side_effect=fake_import):
+            self.assertIn('壊れている', error_message(zipfile.BadZipFile('Bad CRC')))
+            self.assertEqual(error_message(ValueError('other')), 'other')
 
     def test_disk_full_after_partial_write_discards_output(self):
         src = self.archive([('a.txt', 'payload')])

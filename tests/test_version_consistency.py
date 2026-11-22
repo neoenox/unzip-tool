@@ -44,6 +44,8 @@ class VersionConsistencyTests(unittest.TestCase):
         self.assertIn("from version import VERSION", self.release)
         self.assertIn("RELEASE_TAG", self.release)
         self.assertIn("git merge-base --is-ancestor HEAD origin/main", self.release)
+        self.assertNotIn(VERSION, self.release, "build-exe.yaml は版数を直書きしない")
+        self.assertNotRegex(self.release, r"KantanKaiko-Setup-\d+\.\d+\.\d+\.exe")
 
     def test_readme_states_the_current_version(self):
         found = CURRENT_VERSION.findall(self.readme)
@@ -64,8 +66,8 @@ class VersionConsistencyTests(unittest.TestCase):
         for name in ("build-installer.ps1", "test-installer.ps1", "verify-release.ps1"):
             text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
             with self.subTest(script=name):
-                self.assertNotIn(VERSION, text, f"{name} は版数を直書きしない")
-                self.assertNotRegex(text, r"= '\d+\.\d+\.\d+'")
+                self.assertNotIn(VERSION, text, f"{name} は現行版を直書きしない")
+                self.assertNotRegex(text, r"(?<![\d.])\d+\.\d+\.\d+(?![\d.])", f"{name} は版数を直書きしない")
                 self.assertIn("version.py", text)
 
     def test_inno_setup_requires_the_version_defines(self):

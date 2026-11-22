@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import errno
+import importlib
 import lzma
 import shutil
 import stat
@@ -161,11 +162,22 @@ def error_message(error: Exception) -> str:
             return '保存先の空き容量が不足しています。空き容量を増やすか、別の保存先を選んで再試行してください。'
         if error.errno in (errno.EACCES, errno.EPERM) or getattr(error, 'winerror', None) == 5:
             return 'ファイルにアクセスできません。書庫や保存先のアクセス権を確認し、別の保存先で再試行してください。'
-    import py7zr
-    import rarfile
-    if isinstance(error, (zipfile.BadZipFile, tarfile.ReadError, lzma.LZMAError,
-                          py7zr.exceptions.Bad7zFile, py7zr.exceptions.CrcError,
-                          rarfile.BadRarFile, rarfile.RarCRCError)):
+    corrupt = [zipfile.BadZipFile, tarfile.ReadError, lzma.LZMAError]
+    optional = (
+        ("py7zr", "exceptions", ("Bad7zFile", "CrcError")),
+        ("rarfile", None, ("BadRarFile", "RarCRCError")),
+    )
+    for module_name, holder, names in optional:
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError:
+            continue
+        owner = getattr(module, holder) if holder else module
+        for name in names:
+            kind = getattr(owner, name, None)
+            if isinstance(kind, type):
+                corrupt.append(kind)
+    if isinstance(error, tuple(corrupt)):
         return '書庫が壊れているか、形式が正しくありません。ファイルを再取得してお試しください。'
     return str(error)
 
