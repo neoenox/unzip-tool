@@ -98,11 +98,12 @@ def virtual_screen() -> tuple[int, int, int, int] | None:
 
 @dataclass
 class Settings:
-    """保存する値はこの3つだけ。増やすときは load() も併せて直す。"""
+    """保存する値はこの4つだけ。増やすときは load() も併せて直す。"""
 
     geometry: str = ""
     last_dest: str = field(default="")
     last_update_check: float = field(default=0.0)
+    update_notice: str = field(default="")
 
     @staticmethod
     def load(path: Path | None = None) -> "Settings":
@@ -117,13 +118,15 @@ class Settings:
             geometry=_load_text(raw, "geometry", valid_geometry),
             last_dest=_load_text(raw, "last_dest"),
             last_update_check=_load_number(raw, "last_update_check"),
+            update_notice=_load_text(raw, "update_notice",
+                                     lambda value: bool(re.fullmatch(r'\d+\.\d+\.\d+', value))),
         )
 
     def save(self, path: Path | None = None) -> bool:
         target = Path(path) if path is not None else settings_path()
         temporary = target.with_name(target.name + ".tmp")
         payload = {"version": 1, "geometry": self.geometry, "last_dest": self.last_dest,
-                   "last_update_check": self.last_update_check}
+                   "last_update_check": self.last_update_check, "update_notice": self.update_notice}
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

@@ -117,6 +117,7 @@ class UITests(unittest.TestCase):
             self.assertEqual(args[0], 'C:/fake/KantanKaiko-Setup-1.2.0.exe')
             self.assertIn('/VERYSILENT', args)
             self.assertEqual(self.app._update_phase, 'applying')
+            self.assertEqual(self.app._settings.update_notice, '1.2.0')
             self.pump(lambda: close.called, timeout=2)
 
     def test_auto_update_is_gated_by_env_and_interval(self):
@@ -148,6 +149,16 @@ class UITests(unittest.TestCase):
         self.assertEqual(str(self.app.update_btn.cget('state')), 'normal')
         self.assertIsNone(self.app._updating)
         self.assertEqual(self.app.update_text.get(), guidance)
+
+    def test_update_notice_shown_after_restart(self):
+        from ui import UPDATE_DEFAULT_TEXT
+        self.app._settings.update_notice = '1.2.6'
+        self.app._show_update_notice()
+        self.assertIn('1.2.6 に自動更新しました', self.app.update_text.get())
+        self.assertIsNotNone(self.app._notice_after)
+        self.app._clear_update_notice()
+        self.assertEqual(self.app.update_text.get(), UPDATE_DEFAULT_TEXT)
+        self.assertEqual(self.app._settings.update_notice, '')
 
     def test_card_click_selects_job(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])

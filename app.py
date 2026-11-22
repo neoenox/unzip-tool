@@ -147,6 +147,7 @@ class App(tk.Tk):
         self._update_package = None
         self._downloaded = None
         self._auto_update_after = None
+        self._notice_after = None
         self._password_after = None
         self.help_window = None
         # 前回のウィンドウ位置と保存先を復元する (#24)
@@ -165,8 +166,11 @@ class App(tk.Tk):
         if not self._dnd_enabled:
             self.dnd_hint.configure(text="「ファイルを選ぶ」から追加できます")
         self._poll_id = self.after(50, self._poll_events)
+        if self._settings.update_notice:
+            self._show_update_notice()
+        delay = 12800 if self._settings.update_notice else 800
         if not os.environ.get('UNZIPTOOL_NO_UPDATE_CHECK'):
-            self._auto_update_after = self.after(800, self._auto_check_updates)
+            self._auto_update_after = self.after(delay, self._auto_check_updates)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind_all("<Key>", self._on_key, add="+")
         self._empty_layout()
@@ -1038,6 +1042,22 @@ class App(tk.Tk):
             self._poll_listing()
         self._poll_id = self.after(50, self._poll_events)
 
+    def _show_update_notice(self) -> None:
+        version = self._settings.update_notice
+        if not version:
+            return
+        self.update_text.set(f"v{version} に自動更新しました")
+        self._notice_after = self.after(12000, self._clear_update_notice)
+
+    def _clear_update_notice(self) -> None:
+        if self._notice_after:
+            self.after_cancel(self._notice_after)
+            self._notice_after = None
+        if self._settings.update_notice:
+            self._settings.update_notice = ""
+            self._save_settings()
+        self.update_text.set(UPDATE_DEFAULT_TEXT)
+
     def _auto_update_due(self) -> bool:
         last = self._settings.last_update_check
         return last <= 0 or time.time() - last >= UPDATE_INTERVAL
@@ -1053,6 +1073,8 @@ class App(tk.Tk):
         self.check_updates(auto=True)
 
     def check_updates(self, auto: bool = False) -> None:
+        if self._notice_after:
+            self._clear_update_notice()
         if self._updating or self._update_phase != 'idle':
             return
         self._auto_check = auto
@@ -1090,6 +1112,10 @@ class App(tk.Tk):
             self.update_btn.configure(text='更新を確認', state='normal')
             self.update_text.set(f'更新を適用できません: {error}')
             return
+        version = (self._update_package or {}).get('version', '')
+        if version:
+            self._settings.update_notice = version
+            self._save_settings()
         self._downloaded = path
         self._update_phase = 'applying'
         self.update_btn.configure(text='更新を適用中…', state='disabled')
@@ -1238,6 +1264,8 @@ class App(tk.Tk):
             self.after_cancel(self._password_after)
         if self._auto_update_after:
             self.after_cancel(self._auto_update_after)
+        if self._notice_after:
+            self.after_cancel(self._notice_after)
         for job in self.jobs:
             try:
                 job.progress.stop()
