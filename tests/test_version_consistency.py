@@ -1,7 +1,7 @@
 """リリース版数の一元管理を守るテスト。
 
 - `version.py` の `VERSION` が唯一の出所であること。
-- PRのCI (`ci.yaml`) がその値を読んでインストーラー名を決め、版数を直書きしないこと。
+- PRのCIとリリースが共通の `windows-build.yml` でその値を読み、版数を直書きしないこと。
 - リリースworkflowがタグと `VERSION` の一致を検証し続けること。
 - READMEの「現在の版」と、手順に載っているインストーラー名・タグ例が追随していること。
 
@@ -23,6 +23,7 @@ CURRENT_VERSION = re.compile(r"現在は `v(\d+\.\d+\.\d+)`")
 class VersionConsistencyTests(unittest.TestCase):
     def setUp(self):
         self.ci = (ROOT / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
+        self.build = (ROOT / ".github" / "workflows" / "windows-build.yml").read_text(encoding="utf-8")
         self.release = (ROOT / ".github" / "workflows" / "build-exe.yaml").read_text(encoding="utf-8")
         self.readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.iss = (ROOT / "installer" / "KantanKaiko.iss").read_text(encoding="utf-8")
@@ -31,14 +32,16 @@ class VersionConsistencyTests(unittest.TestCase):
         self.assertRegex(VERSION, r"^\d+\.\d+\.\d+$")
 
     def test_ci_reads_the_version_instead_of_hardcoding_it(self):
-        self.assertNotIn(VERSION, self.ci, "ci.yaml は版数を直書きしない（version.py から読む）")
-        self.assertNotRegex(self.ci, r"KantanKaiko-Setup-\d+\.\d+\.\d+\.exe")
-        self.assertIn("from version import VERSION", self.ci)
-        self.assertIn("APP_VERSION", self.ci)
+        for name, text in (("ci.yaml", self.ci), ("windows-build.yml", self.build)):
+            self.assertNotIn(VERSION, text, f"{name} は版数を直書きしない（version.py から読む）")
+            self.assertNotRegex(text, r"KantanKaiko-Setup-\d+\.\d+\.\d+\.exe")
+        self.assertIn("version.py", self.build)
+        self.assertIn("GITHUB_ENV", self.build)
+        self.assertIn("APP_VERSION", self.build)
 
     def test_ci_passes_the_resolved_version_to_the_installer_scripts(self):
         for call in ("build-installer.ps1", "test-installer.ps1"):
-            self.assertRegex(self.ci, rf"{re.escape(call)}[^\n]*\$env:APP_VERSION")
+            self.assertRegex(self.build, rf"{re.escape(call)}[^\n]*\$env:APP_VERSION")
 
     def test_release_workflow_keeps_checking_tag_against_version(self):
         self.assertIn("from version import VERSION", self.release)

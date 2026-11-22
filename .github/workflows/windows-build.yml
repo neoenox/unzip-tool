@@ -1,0 +1,86 @@
+name: windows build
+
+# PR checks and release builds share one build/verify path.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Installer version. Empty reads version.py.'
+        required: false
+        type: string
+        default: ''
+      python-version:
+        description: 'Python used to build the executable.'
+        required: false
+        type: string
+        default: '3.11'
+      upload-artifacts:
+        description: 'Upload the executable and installer.'
+        required: false
+        type: boolean
+        default: false
+      artifact-name:
+        description: 'Name of the uploaded artifact.'
+        required: false
+        type: string
+        default: windows-artifacts
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      APP_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+      - name: Install UnRAR for format tests
+        shell: pwsh
+        run: ./scripts/ci-install-unrar.ps1
+      - name: Run tests
+        run: python tests/run_all.py
+      - name: Run tests under pytest
+        run: python -m pytest --tb=short -q
+      - name: Resolve application version
+        if: inputs.version == ''
+        shell: pwsh
+        run: |
+          $version = python -c "from version import VERSION; print(VERSION)"
+          if (-not $version) { throw "Could not read VERSION from version.py." }
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Output "Building installer for version $version"
+      - name: Build executable
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko --icon assets/icon.ico --add-data "assets/icon.ico;assets" app.py
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          $executable = Get-Item -LiteralPath dist/KantanKaiko.exe -ErrorAction Stop
+          if ($executable.PSIsContainer -or $executable.Length -eq 0) {
+            throw "Build produced a missing or empty executable."
+          }
+      - name: Verify RAR in distribution executable
+        shell: pwsh
+        run: |
+          $unrar = python -c "from unzipper import find_unrar_tool; print(find_unrar_tool() or '')"
+          if (-not $unrar) { throw "UnRAR is required for the distribution check." }
+          python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar $unrar
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -Version $env:APP_VERSION
+      - name: Test installer
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -InstallerPath "dist/KantanKaiko-Setup-$env:APP_VERSION.exe" -Version $env:APP_VERSION
+      - uses: actions/upload-artifact@v7
+        if: always() && inputs.upload-artifacts
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            dist/KantanKaiko.exe
+            dist/KantanKaiko-Setup-${{ env.APP_VERSION }}.exe
