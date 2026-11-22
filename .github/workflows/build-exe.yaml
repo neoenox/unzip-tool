@@ -5,63 +5,58 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Verify release commit is on main
-        run: |
-          git merge-base --is-ancestor HEAD origin/main
-          if ($LASTEXITCODE -ne 0) {
-            throw "Release tags must point to a commit already merged into main."
-          }
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Install build deps
-        run: pip install -r requirements.txt -r requirements-build.txt
+        run: git merge-base --is-ancestor HEAD origin/main
       - name: Verify application version matches release tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python -c "import os; from version import VERSION; assert os.environ['RELEASE_TAG'] == 'v' + VERSION, 'Tag and application version differ'"
-      - name: Install unrar (for tests)
-        shell: pwsh
-        run: ./scripts/ci-install-unrar.ps1
-      - name: Test
-        run: python tests/run_all.py
-      - name: Build exe
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name KantanKaiko --icon assets/icon.ico --add-data "assets/icon.ico;assets" app.py
-      - name: Verify release executable
-        shell: pwsh
-        run: |
-          $executable = Get-Item -LiteralPath dist/KantanKaiko.exe -ErrorAction Stop
-          if ($executable.PSIsContainer -or $executable.Length -eq 0) {
-            throw "Release executable is missing or empty."
-          }
-      - name: Verify RAR in distribution executable
-        run: |
-          $unrar = python -c "from unzipper import find_unrar_tool; print(find_unrar_tool() or '')"
-          if (-not $unrar) { throw "UnRAR is required for the distribution check." }
-          python tests/test_frozen_rar.py --exe dist/KantanKaiko.exe --unrar $unrar
-      - name: Build installer
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: ./scripts/build-installer.ps1 -Version ($env:RELEASE_TAG -replace '^v', '')
-      - name: Test installer
+        id: check
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $version = $env:RELEASE_TAG -replace '^v', ''
-          ./scripts/test-installer.ps1 -InstallerPath "dist/KantanKaiko-Setup-$version.exe" -Version $version
-      - name: Release
+          version=$(python3 -c 'from version import VERSION; print(VERSION)')
+          if [ "$RELEASE_TAG" != "v$version" ]; then
+            echo "Tag $RELEASE_TAG does not match version.py ($version)." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: preflight
+    uses: ./.github/workflows/windows-build.yml
+    with:
+      version: ${{ needs.preflight.outputs.version }}
+      upload-artifacts: true
+      artifact-name: windows-release
+
+  release:
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: windows-release
+          path: dist
+      - name: Publish release
         uses: softprops/action-gh-release@v3
-        if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: ${{ github.ref_name }}
           files: |
