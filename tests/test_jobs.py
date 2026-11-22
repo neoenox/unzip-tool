@@ -172,6 +172,15 @@ class JobTests(unittest.TestCase):
         self.assertFalse(list(self.base.glob('.kantan-*')))
 
 
+    def test_download_task_keeps_package_dict(self):
+        package = {'url': 'https://example.invalid/setup.exe', 'size': 4, 'sha256': '0' * 64}
+        with mock.patch('jobs.mp.get_context') as context:
+            context.return_value.Pipe.return_value = (mock.Mock(), mock.Mock())
+            task = BackgroundTask('download', package)
+            args = context.return_value.Process.call_args.kwargs['args']
+            self.assertIs(args[2], package)
+        task.finished = True
+
     def test_download_operation_reports_progress_and_result(self):
         package = {'url': 'https://example.invalid/setup.exe', 'size': 4, 'sha256': '0' * 64}
         connection = mock.Mock()

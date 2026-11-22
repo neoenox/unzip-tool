@@ -63,7 +63,9 @@ class BackgroundTask:
         context = mp.get_context('spawn')
         self.connection, child = context.Pipe(duplex=False)
         self.process = context.Process(
-            target=_work, args=(child, operation, str(archive), password, self.staging),
+            target=_work, args=(child, operation,
+                                archive if operation == 'download' else str(archive),
+                                password, self.staging),
             daemon=True,
         )
         try:
