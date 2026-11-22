@@ -3,6 +3,8 @@ import tkinter as tk
 from tkinter import ttk
 from version import VERSION
 
+UPDATE_DEFAULT_TEXT = f'ZIP・7z・RAR・TAR  /  v{VERSION}'
+
 
 # --- Design tokens -------------------------------------------------------
 # One palette for the whole app. Test-asserted colours are kept verbatim.
@@ -169,8 +171,8 @@ def build_widgets(view):
                                style="Quiet.TButton", command=view.show_help)
     view.help_btn.pack(side='right', padx=(0, 6))
     Tooltip(view.help_btn, lambda: "対応形式・制限・ショートカット (F1)")
-
-    # Three-step guide; colours are driven by App._sync_steps.
+    view.update_text = tk.StringVar(value=UPDATE_DEFAULT_TEXT)
+    ttk.Label(body, textvariable=view.update_text, style='Muted.TLabel').pack(anchor='w', pady=(4, 8))
     view.steps_frame = ttk.Frame(body)
     view.steps_frame.pack(fill="x", pady=(18, 10))
     view.step_labels = []
@@ -358,7 +360,6 @@ HELP_SECTIONS = (
         "分割アーカイブ（.part1.rar など）と自己解凍形式（.exe）は開けません。",
         "AES暗号化ZIPは開けません（対応するのは標準のZipCryptoのみ）。",
         "既存の保存先へマージしません。同名なら連番の新しいフォルダを作ります。",
-        "更新の自動インストールは行いません。最新版は画面から確認して開きます。",
         "RARを開くにはUnRARが必要です（WinRAR、exeと同じ場所のtools\\UnRAR.exe、環境変数KANTAN_UNRAR）。",
     )),
     ("保存先の決まり", (
@@ -373,6 +374,10 @@ HELP_SECTIONS = (
         "↑ / ↓ — 書庫の選択を移動（選択したカードへフォーカスし、必要なら一覧をスクロール）",
         "F1 — このヘルプを開く",
         "Esc — このヘルプを閉じる",
+    )),
+    ("更新", (
+        "起動時に1日1回、公式リリースを確認します。新版があれば自動でダウンロード・SHA256検証・サイレントインストールし、アプリを終了します。",
+        "手動でも「更新を確認」から同じ処理を実行できます。再起動後に新しい版を使ってください。",
     )),
     ("設定の記憶", (
         "前回の保存先とウィンドウ位置を %APPDATA%\\KantanKaiko\\settings.json に記録し、次回起動時に復元します。",

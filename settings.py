@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -97,10 +98,11 @@ def virtual_screen() -> tuple[int, int, int, int] | None:
 
 @dataclass
 class Settings:
-    """保存する値はこの2つだけ。増やすときは `_load_field` を併せて直す。"""
+    """保存する値はこの3つだけ。増やすときは load() も併せて直す。"""
 
     geometry: str = ""
     last_dest: str = field(default="")
+    last_update_check: float = field(default=0.0)
 
     @staticmethod
     def load(path: Path | None = None) -> "Settings":
@@ -114,12 +116,14 @@ class Settings:
         return Settings(
             geometry=_load_text(raw, "geometry", valid_geometry),
             last_dest=_load_text(raw, "last_dest"),
+            last_update_check=_load_number(raw, "last_update_check"),
         )
 
     def save(self, path: Path | None = None) -> bool:
         target = Path(path) if path is not None else settings_path()
         temporary = target.with_name(target.name + ".tmp")
-        payload = {"version": 1, "geometry": self.geometry, "last_dest": self.last_dest}
+        payload = {"version": 1, "geometry": self.geometry, "last_dest": self.last_dest,
+                   "last_update_check": self.last_update_check}
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -142,3 +146,12 @@ def _load_text(raw: dict, key: str, validator=None) -> str:
     if validator is not None and not validator(value):
         return ""
     return value
+
+
+def _load_number(raw: dict, key: str) -> float:
+    value = raw.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    if not 0 <= value <= time.time() + 24 * 60 * 60:
+        return 0.0
+    return float(value)

@@ -19,6 +19,10 @@ def _work(connection, operation, archive, password, staging):
         if operation == 'update':
             from updates import check_latest
             connection.send(('done', check_latest()))
+        elif operation == 'download':
+            from updates import download_update
+            connection.send(('done', download_update(
+                archive, on_progress=lambda done, total: connection.send(('bytes', (done, total))))))
         elif operation == 'list':
             entries = list_contents(archive, password)
             connection.send(('done', (entries, archive_needs_password(archive))))

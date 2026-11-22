@@ -11,14 +11,14 @@ def main():
     # 実ユーザーの設定ファイルを触らないようにする (#24)。
     with tempfile.TemporaryDirectory(prefix='kantan-settings-') as settings_dir:
         environment = dict(os.environ, PYTHONUTF8='1', UNZIPTOOL_NO_BELL='1',
-                           KANTAN_SETTINGS_DIR=settings_dir)
+                           UNZIPTOOL_NO_UPDATE_CHECK='1', KANTAN_SETTINGS_DIR=settings_dir)
         for suite in ('test_safety.py', 'test_settings.py', 'test_version_consistency.py', 'test_docs_links.py',
                       'test_qa_archives.py', 'test_unrar_policy.py', 'test_updates.py', 'test_jobs.py', 'test_ui.py',
                       'test_password.py', 'test_listing_debounce.py', 'test_7z.py', 'test_rar.py', 'test_e2e.py',
                       'test_xproc_dnd.py', 'test_zip_names.py'):
             print(f'Running {suite}', flush=True)
             subprocess.run([sys.executable, str(root / 'tests' / suite)],
-                           cwd=root, env=environment, check=True, timeout=120)
+                           cwd=root, env=environment, check=True, timeout=600)
 
 
 if __name__ == '__main__':

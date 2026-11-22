@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import subprocess
 import sys
 import time
-import webbrowser
 import tkinter as tk
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,7 +14,7 @@ from tkinter import filedialog, ttk
 from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
 from jobs import BackgroundTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
-from ui import Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact
+from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
@@ -48,6 +48,7 @@ def short_display_name(name: str, limit: int = 32) -> str:
 
 TITLE = "かんたん解凍"
 EMPTY_STATUS = "ファイルを選んで、解凍するだけ。"
+UPDATE_INTERVAL = 24 * 60 * 60  # 起動時の自動チェック間隔
 FILTERS = [
     ("対応アーカイブ", "*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
     ("ZIP", "*.zip"),
@@ -141,6 +142,11 @@ class App(tk.Tk):
         self._updating = None
         self._update_url = None
         self._pending = []
+        self._update_phase = 'idle'  # idle / checking / ready / downloading / downloaded
+        self._auto_check = False
+        self._update_package = None
+        self._downloaded = None
+        self._auto_update_after = None
         self._password_after = None
         self.help_window = None
         # 前回のウィンドウ位置と保存先を復元する (#24)
@@ -159,6 +165,8 @@ class App(tk.Tk):
         if not self._dnd_enabled:
             self.dnd_hint.configure(text="「ファイルを選ぶ」から追加できます")
         self._poll_id = self.after(50, self._poll_events)
+        if not os.environ.get('UNZIPTOOL_NO_UPDATE_CHECK'):
+            self._auto_update_after = self.after(800, self._auto_check_updates)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind_all("<Key>", self._on_key, add="+")
         self._empty_layout()
@@ -1030,36 +1038,113 @@ class App(tk.Tk):
             self._poll_listing()
         self._poll_id = self.after(50, self._poll_events)
 
-    def check_updates(self):
-        if self._updating:
+    def _auto_update_due(self) -> bool:
+        last = self._settings.last_update_check
+        return last <= 0 or time.time() - last >= UPDATE_INTERVAL
+
+    def _auto_check_updates(self) -> None:
+        self._auto_update_after = None
+        if os.environ.get('UNZIPTOOL_NO_UPDATE_CHECK'):
             return
-        if self._update_url:
-            webbrowser.open(self._update_url)
+        if self._updating or self._update_phase != 'idle' or not self._auto_update_due():
             return
+        self._settings.last_update_check = time.time()
+        self._save_settings()
+        self.check_updates(auto=True)
+
+    def check_updates(self, auto: bool = False) -> None:
+        if self._updating or self._update_phase != 'idle':
+            return
+        self._auto_check = auto
         try:
             self._updating = BackgroundTask('update', '')
+            self._update_phase = 'checking'
             self.update_btn.configure(text='確認中…', state='disabled')
+            if auto:
+                self.update_text.set('最新版を確認しています…')
         except Exception:
-            self.update_text.set('更新を確認できませんでした。もう一度お試しください。')
+            self._updating = None
+            self._update_phase = 'idle'
+            if not auto:
+                self.update_text.set('更新を確認できませんでした。もう一度お試しください。')
+
+    def _start_update_download(self, package: dict) -> None:
+        self._update_package = package
+        self.update_text.set(f"新版 v{package['version']} をダウンロードしています…")
+        try:
+            self._updating = BackgroundTask('download', package)
+            self._update_phase = 'downloading'
+            self.update_btn.configure(text='ダウンロード中…', state='disabled')
+        except Exception as error:
+            self._updating = None
+            self._update_phase = 'idle'
+            self.update_text.set(f'ダウンロードを開始できません: {error_message(error)}')
+
+    def _apply_update(self, path: str) -> None:
+        try:
+            flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) if os.name == 'nt' else 0
+            subprocess.Popen([path, '/VERYSILENT', '/NORESTART', '/CLOSEAPPLICATIONS'],
+                             creationflags=flags)
+        except OSError as error:
+            self._update_phase = 'idle'
+            self.update_btn.configure(text='更新を確認', state='normal')
+            self.update_text.set(f'更新を適用できません: {error}')
+            return
+        self._downloaded = path
+        self._update_phase = 'applying'
+        self.update_btn.configure(text='更新を適用中…', state='disabled')
+        self.update_text.set('更新を適用しています。アプリを終了します。')
+        self.after(300, self._on_close)
 
     def _poll_update(self):
         if not self._updating:
             return
+        phase = self._update_phase
+        auto = self._auto_check
         for kind, payload in self._updating.poll():
+            if kind == 'bytes':
+                if phase == 'downloading':
+                    done, total = payload
+                    pct = min(100, done * 100 // total) if total else 0
+                    self.update_text.set(f'新版をダウンロードしています… {pct}%')
+                continue
             if kind not in ('done', 'error'):
                 continue
             self._updating = None
-            self.update_btn.configure(text='更新を確認', state='normal')
-            if kind == 'done':
-                if payload['newer']:
-                    self._update_url = payload['url']
-                    self.update_btn.configure(text='新版を開く')
-                    self.update_text.set(f"新版 v{payload['version']} があります")
-                else:
-                    self.update_text.set(f"最新公開版 v{payload['version']} · このアプリ v{VERSION}")
+            if phase == 'checking':
+                self._finish_check(kind, payload, auto)
+            elif phase == 'downloading':
+                self._finish_download(kind, payload)
             else:
-                self.update_text.set(payload or '更新を確認できません。接続を確認して再試行してください。')
+                self._update_phase = 'idle'
             break
+
+    def _finish_check(self, kind, payload, auto: bool) -> None:
+        if kind == 'error':
+            self._update_phase = 'idle'
+            self.update_btn.configure(text='更新を確認', state='normal')
+            self.update_text.set(UPDATE_DEFAULT_TEXT if auto else (payload or '更新を確認できません。'))
+            return
+        version = payload['version']
+        self._update_url = payload.get('url')
+        package = payload.get('update')
+        if not payload['newer'] or not package:
+            self._update_phase = 'idle'
+            self.update_btn.configure(text='更新を確認', state='normal')
+            if payload['newer']:
+                self.update_text.set(f"新版 v{version} があります · 自動更新ファイルを確認できませんでした")
+            else:
+                self.update_text.set(f"最新公開版 v{version} · このアプリ v{VERSION}")
+            return
+        self._start_update_download(package)
+
+    def _finish_download(self, kind, payload) -> None:
+        if kind == 'error':
+            self._update_phase = 'idle'
+            self.update_btn.configure(text='更新を確認', state='normal')
+            self.update_text.set(payload or 'ダウンロードに失敗しました。もう一度お試しください。')
+            return
+        self._apply_update(payload)
 
     def _poll_listing(self):
         if self._listing:
@@ -1143,12 +1228,16 @@ class App(tk.Tk):
         self._empty_layout()
 
     def _on_close(self):
+        if self._closed:
+            return
         self._closed = True
         self._remember_geometry()
         if self._poll_id:
             self.after_cancel(self._poll_id)
         if self._password_after:
             self.after_cancel(self._password_after)
+        if self._auto_update_after:
+            self.after_cancel(self._auto_update_after)
         for job in self.jobs:
             try:
                 job.progress.stop()
