@@ -3,15 +3,54 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import os
+import queue
 import subprocess
 import tempfile
+import threading
 import time
+from types import SimpleNamespace
 from pathlib import Path
 
 from unzipper import (
     PasswordRequiredError, _extract_into, archive_needs_password,
     clean_staging, error_message, list_contents, publish_staging,
 )
+
+
+
+class ThreadTask:
+    """子プロセスを作れない環境向けの BackgroundTask 互換ワーカー。"""
+
+    def __init__(self, operation, archive, password=None, dest=None):
+        self.finished = False
+        self._events = queue.Queue()
+        connection = SimpleNamespace(send=self._events.put, close=lambda: None)
+        self._thread = threading.Thread(
+            target=self._run,
+            args=(connection, operation, archive, password, dest),
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self, connection, *args):
+        try:
+            _work(connection, *args)
+        finally:
+            self.finished = True
+
+    def poll(self):
+        events = []
+        while len(events) < 100:
+            try:
+                events.append(self._events.get_nowait())
+            except queue.Empty:
+                break
+        if self.finished and self._events.empty():
+            self.finished = True
+        return events
+
+    def cancel(self):
+        self.finished = True
 
 
 def _work(connection, operation, archive, password, staging):

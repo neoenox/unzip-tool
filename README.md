@@ -144,6 +144,7 @@ pwsh -File scripts/verify-release.ps1
 - 非対象（non-goal）と変更の基準: 分割アーカイブ、自己解凍形式、AES暗号ZIP、既存保存先へのマージは対象外（「あとで追加する」予定ではない）。見直す場合は、①一般ユーザーの誤操作・混乱リスクが増えない、②既存の安全検査とテストを壊さない、③README・ヘルプ・QA手順を同時に更新できる、の3条件をすべて満たすこと。
 - アプリの強制終了や電源断では `.kantan-*` 一時フォルダが残ることがある。既存の解凍結果は変更しない。
 - UIの配置は `ui.py`、状態と順次処理は `app.py`、作業プロセスは `jobs.py`、解凍と検査は `unzipper.py`、保存設定は `settings.py`。
+- 更新確認・ダウンロードは子プロセスで行う。子プロセスを作れない環境では同じ API のスレッド版ワーカーへ退避し、更新確認を継続する。
 - 設定は `%APPDATA%\KantanKaiko\settings.json` の1ファイルにまとめる。テストは環境変数 `KANTAN_SETTINGS_DIR` でこの場所を実ユーザーの設定から切り離し、`UNZIPTOOL_NO_UPDATE_CHECK=1` で起動時の自動通信を止める。
 
 修正計画は [docs/implementation-plan.md](docs/implementation-plan.md)。PRではWindows CIが全テストとexeビルドを実行する。
