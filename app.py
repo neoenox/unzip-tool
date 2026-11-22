@@ -14,7 +14,7 @@ from tkinter import filedialog, ttk
 from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
 from jobs import BackgroundTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
-from ui import Tooltip, build_help_window, build_widgets, paint_drop_area
+from ui import Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
@@ -75,6 +75,9 @@ class ArchiveJob:
     byte_total: int = 0
     elapsed: int = -1
     card: object = None
+    card_inner: object = None
+    accent: object = None
+    actions: object = None
     summary: object = None
     message: object = None
     progress: object = None
@@ -305,10 +308,16 @@ class App(tk.Tk):
         self.select_job(self.jobs[(idx + delta) % len(self.jobs)])
 
     def _new_card(self, job):
-        job.card = ttk.Frame(self.card_list, style="Card.TFrame", padding=12)
-        job.card.pack(fill="x", pady=(0, 8))
+        job.card = tk.Frame(self.card_list, bg="#ffffff", highlightbackground="#dce4ef",
+                            highlightthickness=1, bd=0)
+        job.card.pack(fill="x", pady=(0, 10))
         job.card.configure(cursor="hand2")
-        row = ttk.Frame(job.card, style="Card.TFrame")
+        job.accent = tk.Frame(job.card, bg="#2563eb", width=4)
+        job.accent.pack(side="left", fill="y")
+        inner = ttk.Frame(job.card, style="CardInner.TFrame", padding=(14, 12))
+        inner.pack(side="left", fill="both", expand=True)
+        job.card_inner = inner
+        row = ttk.Frame(inner, style="CardInner.TFrame")
         row.pack(fill="x")
         try:
             fmt = _detect_kind(job.archive)
@@ -316,36 +325,43 @@ class App(tk.Tk):
             fmt = "zip"
         fmt_text, fmt_fg, fmt_bg = FORMAT_BADGE.get(fmt, (fmt.upper(), "#ffffff", "#64748b"))
         job.fmt_badge = tk.Label(row, text=fmt_text, fg=fmt_fg, bg=fmt_bg,
-                                 font=("Yu Gothic UI", 9, "bold"), padx=6, pady=2)
+                                 font=("Yu Gothic UI", 9, "bold"), padx=7, pady=3)
         job.fmt_badge.pack(side="left")
         name = job.archive.name
         short_name = short_display_name(name)
-        job.name_btn = ttk.Button(row, text=short_name, command=lambda: self.select_job(job))
-        job.name_btn.pack(side="left", padx=(8, 0))
+        job.name_btn = ttk.Button(row, text=short_name, style="Quiet.TButton",
+                                  command=lambda: self.select_job(job))
+        job.name_btn.pack(side="left", padx=(10, 0))
         Tooltip(job.name_btn, lambda: str(job.archive))
-        job.remove_btn = ttk.Button(row, text="×", width=3, command=lambda: self.remove_job(job))
+        job.remove_btn = ttk.Button(row, text="×", width=3, style="Quiet.TButton",
+                                    command=lambda: self.remove_job(job))
         job.remove_btn.pack(side="right")
-        Tooltip(job.remove_btn, lambda: "この書庫を一覧から外します（ファイル自体は削除しません）")
         job.state_badge = tk.Label(row, text="確認中", fg="#64748b", bg="#f1f5f9",
-                                   font=("Yu Gothic UI", 9, "bold"), padx=6, pady=2)
+                                   font=("Yu Gothic UI", 9, "bold"), padx=7, pady=3)
         job.state_badge.pack(side="right", padx=(0, 6))
-        job.open_button = ttk.Button(job.card, text="フォルダを開く", command=lambda: self.open_result(job))
-        job.summary = ttk.Label(job.card, text="内容を確認しています…", style="CardMuted.TLabel")
-        job.summary.pack(anchor="w", pady=(8, 4))
-        job.message = ttk.Label(job.card, text="確認中", style="Card.TLabel", wraplength=max(280, self.winfo_width() - 96))
+        Tooltip(job.remove_btn, lambda: "この書庫を一覧から外します（ファイル自体は削除しません）")
+
+        job.summary = ttk.Label(inner, text="内容を確認しています…", style="CardMuted.TLabel",
+                                font=("Yu Gothic UI", 10, "bold"))
+        job.summary.pack(anchor="w", pady=(10, 3))
+        job.message = ttk.Label(inner, text="確認中", style="Card.TLabel",
+                                wraplength=max(280, self.winfo_width() - 120))
         job.message.pack(anchor="w")
-        job.dest_row = ttk.Frame(job.card, style="Card.TFrame")
-        job.dest_row.pack(fill="x", pady=(4, 0))
-        job.dest_label = ttk.Label(job.dest_row, text="", style="CardMuted.TLabel", font=("Yu Gothic UI", 9))
+        job.dest_row = ttk.Frame(inner, style="CardInner.TFrame")
+        job.dest_row.pack(fill="x", pady=(7, 0))
+        job.dest_label = ttk.Label(job.dest_row, text="", style="CardMuted.TLabel",
+                                   font=("Yu Gothic UI", 9))
         job.dest_label.pack(side="left", fill="x", expand=True)
         Tooltip(job.dest_label, lambda j=job: f"保存先: {j.result or j.dest}")
-        job.dest_btn = ttk.Button(job.dest_row, text="変更", width=6,
+        job.dest_btn = ttk.Button(job.dest_row, text="変更", width=6, style="Quiet.TButton",
                                   command=lambda: self.choose_dest_for(job))
         job.dest_btn.pack(side="left", padx=(8, 0))
-        job.progress = ttk.Progressbar(job.card, mode="determinate")
-        # パスワード欄 (必要な書庫のカード内にだけ表示)
+        job.progress = ttk.Progressbar(inner, mode="determinate",
+                                       style="Card.Horizontal.TProgressbar")
+
+        # Password row (only packed for archives that need one).
         job.pw_var = tk.StringVar()
-        job.pw_frame = ttk.Frame(job.card, style="Card.TFrame")
+        job.pw_frame = ttk.Frame(inner, style="CardInner.TFrame")
         ttk.Label(job.pw_frame, text="パスワード", style="Card.TLabel").pack(side="left", padx=(0, 10))
         job.pw_entry = ttk.Entry(job.pw_frame, textvariable=job.pw_var, show="●", width=24)
         job.pw_entry.pack(side="left", fill="x", expand=True)
@@ -354,11 +370,20 @@ class App(tk.Tk):
         ttk.Checkbutton(job.pw_frame, text="表示", variable=job.show_pw,
                         command=lambda: job.pw_entry.configure(show="" if job.show_pw.get() else "●")).pack(side="left", padx=(8, 0))
         job.pw_var.trace_add("write", lambda *_a, j=job: self._on_card_password(j))
-        # 内容表示 (書庫ごと)
-        job.details_btn = ttk.Button(job.card, text="内容を見る",
+
+        # One tidy row for every card action.
+        job.actions = ttk.Frame(inner, style="CardInner.TFrame")
+        job.actions.pack(fill="x", pady=(10, 0))
+        job.details_btn = ttk.Button(job.actions, text="内容を見る", style="Quiet.TButton",
                                      command=lambda: self.toggle_card_details(job))
-        job.details_btn.pack(anchor="w", pady=(8, 0))
-        job.details_wrap = ttk.Frame(job.card, style="Card.TFrame")
+        job.details_btn.pack(side="left", padx=(0, 8))
+        job.open_button = ttk.Button(job.actions, text="フォルダを開く", style="Quiet.TButton",
+                                     command=lambda: self.open_result(job))
+        job.retry_btn = ttk.Button(job.actions, text="再試行", style="Quiet.TButton",
+                                   command=lambda: self.retry_job(job))
+        job.action_btn = ttk.Button(job.actions, text="", style="Quiet.TButton",
+                                    command=lambda: self.invoke_card_action(job))
+        job.details_wrap = ttk.Frame(inner, style="CardInner.TFrame")
         job.tree = ttk.Treeview(job.details_wrap, columns=("size",), show="tree headings", height=5)
         job.tree.heading("#0", text="フォルダ / ファイル")
         job.tree.heading("size", text="サイズ")
@@ -367,10 +392,9 @@ class App(tk.Tk):
         job.tree.configure(yscrollcommand=tree_scroll.set)
         job.tree.pack(side="left", fill="both", expand=True)
         tree_scroll.pack(side="right", fill="y")
-        job.retry_btn = ttk.Button(job.card, text="再試行", command=lambda: self.retry_job(job))
-        job.action_btn = ttk.Button(job.card, text="", command=lambda: self.invoke_card_action(job))
-        # カードのどこをクリックしてもその書庫を選択する
-        for widget in (job.card, row, job.summary, job.message, job.dest_label):
+
+        # Clicking the card anywhere selects that archive.
+        for widget in (job.card, inner, row, job.summary, job.message, job.dest_label):
             widget.bind("<Button-1>", lambda _e, j=job: self.select_job(j))
 
     def _sync_card_chrome(self, job):
@@ -378,28 +402,25 @@ class App(tk.Tk):
         text, fg, bg = STATE_BADGE.get(job.state, ("", "#243447", "#f4f6f8"))
         try:
             job.state_badge.configure(text=text, foreground=fg, background=bg)
-            if self.selected is job:
-                job.card.configure(style="CardSel.TFrame")
-            elif job.state == "failed":
-                job.card.configure(style="CardFailed.TFrame")
-            elif job.state == "password":
-                job.card.configure(style="CardPassword.TFrame")
-            elif job.state == "done":
-                job.card.configure(style="CardDone.TFrame")
-            else:
-                job.card.configure(style="Card.TFrame")
+            accent = ("#2563eb", 2) if self.selected is job else {
+                "failed": ("#fca5a5", 1, "#dc2626"),
+                "password": ("#fcd34d", 1, "#d97706"),
+                "done": ("#86efac", 1, "#16a34a"),
+            }.get(job.state, ("#dce4ef", 1, "#2563eb"))
+            job.card.configure(highlightbackground=accent[0], highlightthickness=accent[1])
+            job.accent.configure(bg=accent[2] if len(accent) > 2 else accent[0])
         except Exception:
             pass
         try:
             show_retry = job.state in ("failed", "password", "cancelled") and not self.busy
             if show_retry and not job.retry_btn.winfo_manager():
-                job.retry_btn.pack(anchor="w", pady=(8, 0))
+                job.retry_btn.pack(side="left", padx=(0, 8))
             elif not show_retry and job.retry_btn.winfo_manager():
                 job.retry_btn.pack_forget()
             action = self._card_action(job) if not self.busy else None
             if action and not job.action_btn.winfo_manager():
                 job.action_btn.configure(text=action[0])
-                job.action_btn.pack(anchor="w", pady=(8, 0))
+                job.action_btn.pack(side="left", padx=(0, 8))
             elif action:
                 job.action_btn.configure(text=action[0])
             elif job.action_btn.winfo_manager():
@@ -503,11 +524,7 @@ class App(tk.Tk):
 
     def _empty_layout(self):
         self.card_region.pack_forget()
-        self.drop_area.configure(pady=16)
-        self.drop_title.pack_configure(side="top", padx=0, pady=(0, 6))
-        self.dnd_hint.pack(before=self.choose_btn)
-        self.choose_btn.pack_configure(side="top", padx=0, pady=(10, 0))
-        self.drop_area.pack_configure(fill="both", expand=True)
+        set_drop_compact(self, False)
         self.dest_var.set(str(self._custom_parent) if self._custom_parent else "元ファイルと同じ場所")
         self._update_buttons()
 
@@ -660,20 +677,13 @@ class App(tk.Tk):
                 destination = self._custom_parent / destination.name
             job = ArchiveJob(path, destination)
             self.jobs.append(job)
-            self.drop_area.configure(pady=8)
-            self.dnd_hint.pack_forget()
-            self.drop_title.pack_configure(side="left", padx=12, pady=0)
-            self.choose_btn.pack_configure(side="right", padx=12, pady=0)
-            self.drop_area.pack_configure(fill="x", expand=False)
+            set_drop_compact(self, True)
             self.card_region.pack(fill="both", expand=True, pady=(16, 8), before=self.options)
             self._new_card(job)
             self.select_job(job)
         if self.selected:
             self.select_job(self.selected)
-        elif self._custom_parent:
-            # 書庫が無い状態で保存先フォルダをドロップしても欄を同期する
-            self._set_sync_vars(dest=str(self._custom_parent))
-        self.drop_title.configure(text="ファイルを追加できます" if self.jobs else "ここにファイルをドロップ")
+        self.drop_title.configure(text=f"{len(self.jobs)} 件の書庫 · ファイルを追加できます" if self.jobs else "ここにファイルをドロップ")
         messages = []
         if rejected:
             messages.append("追加できません（未対応またはファイルがありません）: " + ", ".join(rejected))
@@ -989,7 +999,7 @@ class App(tk.Tk):
                         job.summary.configure(text=f"解凍完了 · 経過 {int(time.monotonic() - job.started)} 秒")
                         job.result = payload
                         job.message.configure(text=f"完了: {payload}")
-                        job.open_button.pack(anchor="w", pady=(8, 0))
+                        job.open_button.pack(side="left", padx=(0, 8))
                         job.password = ""
                         job.pw_var.set("")
                         self._sync_card_pw_row(job)

@@ -92,6 +92,18 @@ class UITests(unittest.TestCase):
         self.app.update()
         self.assertIsNone(tip._tip)
 
+    def test_clicking_drop_area_opens_picker_unless_busy(self):
+        with patch.object(self.app, 'choose_archive') as picker:
+            self.app.drop_area.event_generate('<Button-1>')
+            self.app.update()
+            picker.assert_called_once()
+            picker.reset_mock()
+            self.app.busy = True
+            self.app.drop_area.event_generate('<Button-1>')
+            self.app.update()
+            picker.assert_not_called()
+            self.app.busy = False
+
     def test_manual_update_check_and_official_release_link(self):
         from unittest.mock import Mock
         task = Mock()
