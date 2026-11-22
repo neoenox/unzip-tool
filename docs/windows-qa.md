@@ -212,3 +212,10 @@ PASS shipped exe: testfile.rar5.rar with UnRAR
 - 未リリースの変更: 更新確認の証明書エラーを分離して案内を出し (`updates.py`)、ワーカーから渡された文言を UI に表示する (`app.py`) 修正を追加した。上記2項目は公開済み v1.2.4 の資産に対する検証であり、このソースツリーの未リリース変更は含まれない。次回リリース時に再検証する。
 
 - 未リリースのUI/UX変更: 矢印キーで選んだカードへフォーカスが移り、選択カードが一覧の表示範囲外なら自動スクロールする (`app.py`)。フッターの件数はディレクトリを含むエントリ数からファイル数に変え (`{count:,} ファイル`)、カードの「N ファイル」表示と揃えた。2026-11-20 節のフッター件数に関する観察は旧 v1.2.4 の挙動。
+
+## 2026-11-22 v1.2.5 release verification
+
+- `main` に `2588853` (更新確認の証明書エラー案内と選択操作のUI) と `cf4ebd0` (版数準備) をpushし、タグ `v1.2.5` は `cf4ebd0` を指す。タグの release workflow `45002881990` は version/tag一致、commit-on-main、Test、exe build、RAR検証、installer build、installer test を含む全ステップが成功。通常pushの checks `45002868300` (windows, tests-newer-python) も成功。
+- Release `v1.2.5` は published (draft/prerelease ではない)。資産: `KantanKaiko.exe` 14,685,493 bytes / SHA256 `f4400dabdba4a885a0024c04dd8285439e199f82735f2b3531e33ac11f30e316`、`KantanKaiko-Setup-1.2.5.exe` 16,436,168 bytes / SHA256 `b03da802769f4ae44aefdfd936bd454cf22c296bf6c38e70967ec0dc25a73b10`。
+- `pwsh -File scripts/verify-release.ps1` をローカルで実行し、`Checked 24 item(s); 0 failed.` / `PASS verify-release v1.2.5`。資産ハッシュ、位置復元 (300,200) と保存 (900x700+500+400)、画面外設定の拒否、更新フィード (`v1.2.5` が最新で、自分自身より newer ではない) を確認した。既存インストールがあるため `scripts/test-installer.ps1` はローカルでスキップし、CIの実行をもって代替とする。
+- 今回のUI/UX変更 (選択カードのフォーカスとスクロール、フッターのファイル数表記) と更新エラー案内は自動テストで検証済み。シェル登録と起動処理の変更はないため、Explorerの実操作チェックを v1.2.5 で再実施していない。
