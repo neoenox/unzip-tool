@@ -91,6 +91,8 @@ REM UnRARは同梱しない。RARはWinRAR/外付けUnRAR/KANTAN_UNRAR経由で�
 
 `KantanKaiko-Setup-1.2.9.exe` を実行すると、日本語の案内でユーザー専用フォルダ（標準は `%LOCALAPPDATA%\Programs\KantanKaiko`）にインストールする。管理者権限は不要。スタートメニューに登録し、デスクトップのショートカットは任意で作成できる。Windowsの「インストールされているアプリ」からアンインストールできる。
 
+インストール時のタスクで「アーカイブをダブルクリックしたときの既定アプリにする」を選ぶと、`.zip` / `.7z` / `.rar` / `.tar` / `.tgz` / `.tbz` / `.txz` / `.gz` / `.bz2` / `.xz` の既定アプリに登録します（既定はオフ。`.gz` 等は汎用形式なので注意）。Windows 11 の UserChoice 保護で効かない拡張子もあります。
+
 ローカルで作成する場合はInno Setup 6を用意し、先に `build.bat` でexeを作成する。
 
 ```powershell

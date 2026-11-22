@@ -43,6 +43,7 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "デスクトップにショートカットを作成する"; Flags: unchecked
+Name: "defaultassoc"; Description: "アーカイブをダブルクリックしたときの既定アプリにする（.gz/.bz2/.xz を含む）"; Flags: unchecked
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -77,6 +78,18 @@ Root: HKCU; Subkey: "Software\Classes\.xz\OpenWithProgids"; ValueType: string; V
 Root: HKCU; Subkey: "Software\Classes\Applications\KantanKaiko.exe\SupportedTypes"; ValueType: string; ValueName: ".xz"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\.txz\OpenWithProgids"; ValueType: string; ValueName: "KantanKaiko.Archive"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Classes\Applications\KantanKaiko.exe\SupportedTypes"; ValueType: string; ValueName: ".txz"; ValueData: ""
+
+; 任意タスク: ダブルクリックで開く既定アプリにする
+Root: HKCU; Subkey: "Software\Classes\.zip"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.7z"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.rar"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.tar"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.tgz"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.tbz"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.txz"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.gz"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.bz2"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.xz"; ValueType: string; ValueName: ""; ValueData: "KantanKaiko.Archive"; Tasks: defaultassoc; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\KantanKaiko.exe"; Description: "かんたん解凍を起動する"; Flags: nowait postinstall skipifsilent
