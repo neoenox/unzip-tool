@@ -9,10 +9,11 @@ import ctypes
 import os
 
 import dnd_ole
+from dnd_common import MAX_FILES, hdrop_valid as _hdrop_valid, query_paths as _query_paths
 
 WM_DROPFILES = 0x0233
 GWL_WNDPROC = -4
-MAX_FILES = 64  # 取り出し上限 (シンプル版)
+
 
 # hwnd -> (旧WndProc, 新WndProcへの参照) ※参照保持しないとGCでクラッシュする
 _hooks: dict[int, tuple[int, object]] = {}
@@ -21,6 +22,9 @@ _hooks: dict[int, tuple[int, object]] = {}
 # WndProc内ではTkを一切触らない (別プロセスからの通知時に再入すると
 # インタプリタごと落ちるため)。取り出しはメインループ側のpollで行う。
 _pending: dict[int, list[list[str]]] = {}
+
+# hwnd -> 上限を超えてドロップされ、取り出されなかった件数
+_truncated: dict[int, int] = {}
 
 
 def _setup_procs():
@@ -56,30 +60,6 @@ def _setup_procs():
     return user32, shell32, kernel32, set_long, call_proc, WNDPROC
 
 
-GMEM_INVALID_HANDLE = 0x8000
-
-
-def _hdrop_valid(kernel32, hdrop: int) -> bool:
-    """自プロセスから見て有効なHDROPか。ゴミ/NULLには触らない。"""
-    if not hdrop:
-        return False
-    try:
-        return (kernel32.GlobalFlags(hdrop) & GMEM_INVALID_HANDLE) == 0
-    except Exception:
-        return False
-
-
-def _query_paths(shell32, hdrop: int) -> list[str]:
-    count = shell32.DragQueryFileW(hdrop, 0xFFFFFFFF, None, 0)
-    paths: list[str] = []
-    for i in range(min(count, MAX_FILES)):
-        length = shell32.DragQueryFileW(hdrop, i, None, 0)
-        buf = ctypes.create_unicode_buffer(length + 1)
-        shell32.DragQueryFileW(hdrop, i, buf, length + 1)
-        paths.append(buf.value)
-    return paths
-
-
 def enable_drop(widget) -> bool:
     """widget(トップレベル)へのファイルドロップを有効化。成功時True。
     通知は take_dropped_files() でpollして受け取る (コールバック方式は
@@ -103,8 +83,10 @@ def enable_drop(widget) -> bool:
                 try:
                     if _hdrop_valid(kernel32, wp):
                         need_finish = True
-                        paths = _query_paths(shell32, wp)
+                        paths, skipped = _query_paths(shell32, wp)
                         _pending.setdefault(hwnd_, []).append(paths)
+                        if skipped:
+                            _truncated[hwnd_] = _truncated.get(hwnd_, 0) + skipped
                 except Exception:
                     pass
                 finally:
@@ -113,6 +95,9 @@ def enable_drop(widget) -> bool:
                             shell32.DragFinish(wp)
                         except Exception:
                             pass
+
+                # DragFinish 済みの HDROP は旧 WndProc へ渡さない
+                return 0
             try:
                 old = _hooks[hwnd_][0]
             except KeyError:
@@ -125,8 +110,13 @@ def enable_drop(widget) -> bool:
             return False
         _hooks[hwnd] = (old_proc, proc)
         shell32.DragAcceptFiles(hwnd, True)
-        # ドラッグ中の状態通知 (#29)。登録できなければ WM_DROPFILES のみで動く。
-        dnd_ole.register(hwnd, lambda paths: _pending.setdefault(hwnd, []).append(paths))
+        # ドロップされたパスと超過件数を poll 側へ渡す (OLE も同じ経路)
+        def store_paths(paths, skipped):
+            _pending.setdefault(hwnd, []).append(paths)
+            if skipped:
+                _truncated[hwnd] = _truncated.get(hwnd, 0) + skipped
+
+        dnd_ole.register(hwnd, store_paths)
         return True
     except Exception:
         return False
@@ -141,6 +131,15 @@ def take_dropped_files(widget) -> list[list[str]]:
     except Exception:
         return []
 
+def take_truncated_files(widget) -> int:
+    """上限超過で破棄した件数を取り出し、クリアする (メインスレッドのみ)。"""
+    if os.name != "nt":
+        return 0
+    try:
+        return _truncated.pop(widget.winfo_id(), 0)
+    except Exception:
+        return 0
+
 
 def disable_drop(widget) -> None:
     """終了時にWndProcを復元する。失敗しても無視。"""
@@ -150,6 +149,8 @@ def disable_drop(widget) -> None:
         hwnd = widget.winfo_id()
         dnd_ole.revoke(hwnd)
         hook = _hooks.pop(hwnd, None)
+        _pending.pop(hwnd, None)
+        _truncated.pop(hwnd, None)
         if not hook:
             return
         old_proc, _ = hook
