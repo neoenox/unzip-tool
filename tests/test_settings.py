@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -22,6 +23,18 @@ class SettingsFileTests(unittest.TestCase):
         loaded = settings.Settings.load(self.path)
         self.assertEqual(loaded.geometry, '')
         self.assertEqual(loaded.last_dest, '')
+
+
+    def test_update_check_time_round_trip(self):
+        written = settings.Settings(last_update_check=1234.5)
+        written.save(self.path)
+        self.assertEqual(settings.Settings.load(self.path).last_update_check, 1234.5)
+
+    def test_invalid_update_check_time_is_dropped(self):
+        for value in ('1234', True, -1, time.time() + 10 * 24 * 60 * 60):
+            with self.subTest(value=value):
+                self.path.write_text(json.dumps({'last_update_check': value}), encoding='utf-8')
+                self.assertEqual(settings.Settings.load(self.path).last_update_check, 0.0)
 
     def test_round_trip_keeps_japanese_path(self):
         dest = self.base / '日本語 フォルダ'

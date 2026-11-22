@@ -92,19 +92,50 @@ class UITests(unittest.TestCase):
         self.app.update()
         self.assertIsNone(tip._tip)
 
-    def test_manual_update_check_and_official_release_link(self):
+    def test_manual_check_downloads_and_applies_silently(self):
+        from unittest.mock import Mock
+        package = {'version': '1.2.0', 'name': 'KantanKaiko-Setup-1.2.0.exe',
+                   'url': 'https://github.com/neoenox/unzip-tool/releases/download/v1.2.0/KantanKaiko-Setup-1.2.0.exe',
+                   'size': 100, 'sha256': '0' * 64}
+        check_task = Mock()
+        check_task.poll.return_value = [('done', {'newer': True, 'version': '1.2.0',
+                                                 'url': 'https://github.com/neoenox/unzip-tool/releases/tag/v1.2.0',
+                                                 'update': package})]
+        download_task = Mock()
+        download_task.poll.return_value = [('bytes', (50, 100)),
+                                           ('done', 'C:/fake/KantanKaiko-Setup-1.2.0.exe')]
+        with patch('app.BackgroundTask', side_effect=[check_task, download_task]) as constructor, \
+                patch('app.subprocess.Popen') as popen, \
+                patch.object(self.app, '_on_close') as close:
+            self.app.check_updates()
+            constructor.assert_called_once_with('update', '')
+            self.app._poll_update()
+            self.assertEqual(constructor.call_args.args[0], 'download')
+            self.assertEqual(self.app._update_phase, 'downloading')
+            self.app._poll_update()
+            args = popen.call_args.args[0]
+            self.assertEqual(args[0], 'C:/fake/KantanKaiko-Setup-1.2.0.exe')
+            self.assertIn('/VERYSILENT', args)
+            self.assertEqual(self.app._update_phase, 'applying')
+            self.pump(lambda: close.called, timeout=2)
+
+    def test_auto_update_is_gated_by_env_and_interval(self):
         from unittest.mock import Mock
         task = Mock()
-        task.poll.return_value = [('done', {'newer': True, 'version': '1.2.0',
-                                           'url': 'https://github.com/neoenox/unzip-tool/releases/tag/v1.2.0'})]
+        task.poll.return_value = [('done', {'newer': False, 'version': '1.2.5',
+                                            'url': 'https://github.com/neoenox/unzip-tool/releases/tag/v1.2.5',
+                                            'update': None})]
         with patch('app.BackgroundTask', return_value=task) as constructor:
-            self.app.check_updates()
-        constructor.assert_called_once_with('update', '')
-        self.app._poll_update()
-        self.assertEqual(self.app.update_btn.cget('text'), '新版を開く')
-        with patch('app.webbrowser.open') as browser:
-            self.app.check_updates()
-        browser.assert_called_once_with('https://github.com/neoenox/unzip-tool/releases/tag/v1.2.0')
+            self.app._auto_check_updates()
+            constructor.assert_not_called()
+            with patch.dict('os.environ', {'UNZIPTOOL_NO_UPDATE_CHECK': ''}):
+                self.app._settings.last_update_check = time.time()
+                self.app._auto_check_updates()
+                constructor.assert_not_called()
+                self.app._settings.last_update_check = 0
+                self.app._auto_check_updates()
+                constructor.assert_called_once_with('update', '')
+                self.assertGreater(self.app._settings.last_update_check, 0)
 
     def test_failed_update_shows_guidance_and_can_be_retried(self):
         from unittest.mock import Mock
@@ -117,6 +148,7 @@ class UITests(unittest.TestCase):
         self.assertEqual(str(self.app.update_btn.cget('state')), 'normal')
         self.assertIsNone(self.app._updating)
         self.assertEqual(self.app.update_text.get(), guidance)
+
     def test_card_click_selects_job(self):
         self.app.on_drop_files([str(self.archive('one.zip')), str(self.archive('two.zip'))])
         self.pump(lambda: all(j.state == 'ready' for j in self.app.jobs))
