@@ -214,5 +214,35 @@ class JobTests(unittest.TestCase):
                 time.sleep(0.02)
         self.assertEqual(events[-1], ('done', payload))
 
+    def test_thread_task_reports_download_events(self):
+        package = {'url': 'https://example.invalid/setup.exe', 'size': 4, 'sha256': '0' * 64}
+
+        def fake_download(_package, on_progress=None):
+            on_progress(2, 4)
+            on_progress(4, 4)
+            return 'C:/fake/KantanKaiko-Setup.exe'
+
+        with mock.patch('updates.download_update', side_effect=fake_download):
+            task = ThreadTask('download', package)
+            end = time.monotonic() + 5
+            events = []
+            while time.monotonic() < end:
+                events.extend(task.poll())
+                if any(kind == 'done' for kind, _ in events):
+                    break
+                time.sleep(0.02)
+        self.assertEqual(events[0], ('bytes', (2, 4)))
+        self.assertEqual(events[-1], ('done', 'C:/fake/KantanKaiko-Setup.exe'))
+
+        with mock.patch('updates.download_update', side_effect=ValueError('検証失敗')):
+            task = ThreadTask('download', package)
+            end = time.monotonic() + 5
+            while time.monotonic() < end:
+                events = task.poll()
+                if events:
+                    break
+                time.sleep(0.02)
+        self.assertEqual(events[-1], ('error', '検証失敗'))
+
 if __name__ == '__main__':
     unittest.main()
