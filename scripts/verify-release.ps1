@@ -11,7 +11,7 @@
     - ダウンロードした exe を直接起動し、保存した位置にウィンドウが戻ること
     - 画面外の座標は画面内に置き直されること
     - 終了時にウィンドウ位置が設定へ保存されること
-    - 更新確認が公開済みの版数を最新として返すこと
+    - 更新確認が公開 API に到達し、対象版との新旧関係を返すこと
 
     インストーラーのインストール/アンインストール/ショートカット/登録の検証は
     scripts/test-installer.ps1 が担当する。既にインストール済みの端末では実行できないため、
@@ -247,13 +247,13 @@ try {
     $env:KANTAN_SETTINGS_DIR = $previousSettings
 }
 
-# 3. 更新確認（公開 API）
+# 3. 更新確認（公開 API。対象版を渡すので旧タグの検証でも誤FAILしない）
 $python = Get-Command python -ErrorAction SilentlyContinue
 if ($python) {
     Write-Output 'Checking the update feed.'
     Push-Location $projectRoot
     try {
-        $raw = & $python.Source -c "import json, updates; print(json.dumps(updates.check_latest(), ensure_ascii=True))" 2>&1
+        $raw = & $python.Source -c "import json, sys, updates; print(json.dumps(updates.check_latest(sys.argv[1]), ensure_ascii=True))" $Version 2>&1
         $code = $LASTEXITCODE
     } finally {
         Pop-Location
@@ -261,8 +261,12 @@ if ($python) {
     Assert-True ($code -eq 0) "the update check reaches the release feed"
     if ($code -eq 0) {
         $latest = $raw | ConvertFrom-Json
-        Assert-True ($latest.version -eq $Version) "the published version is offered as the latest ($($latest.version))"
-        Assert-True (-not $latest.newer) 'the published version is not reported as newer than itself'
+        Assert-True ([bool]$latest.version) "the update feed returns a version ($($latest.version))"
+        if ($latest.version -eq $Version) {
+            Assert-True (-not $latest.newer) 'the published version is not reported as newer than itself'
+        } else {
+            Write-Output "Feed latest is $($latest.version); $Version is not the latest published release."
+        }
     }
 } else {
     Write-Warning 'python was not found; skipping the update check.'

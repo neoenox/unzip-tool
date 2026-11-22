@@ -598,8 +598,14 @@ class UITests(unittest.TestCase):
             self.skipTest('OLE drop target not registered')
         effect = ctypes.c_ulong(0)
         pt = dnd_ole.POINT(0, 0)
+        query = dnd_ole._QueryGetData(lambda this, fmt: dnd_ole.S_OK)
+        vtbl = (ctypes.c_void_p * 6)()
+        vtbl[5] = ctypes.cast(query, ctypes.c_void_p).value
+        iface = (ctypes.c_void_p * 1)(
+            ctypes.cast(ctypes.pointer(vtbl), ctypes.c_void_p).value)
+        data_obj = ctypes.cast(ctypes.pointer(iface), ctypes.c_void_p)
         self.app._drag_over = False
-        target._vtbl.DragEnter(target.pointer, None, 1, pt, ctypes.pointer(effect))
+        target._vtbl.DragEnter(target.pointer, data_obj, 1, pt, ctypes.pointer(effect))
         self.assertEqual(effect.value, 1)
         # 実タイマー経由で poll させる (_poll_events を直接呼ぶと再スケジュールされる)
         self.pump(lambda: self.app.drop_area.cget('bg') == DROP_ACTIVE_BG)

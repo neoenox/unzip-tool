@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import settings
@@ -66,6 +67,11 @@ class SettingsFileTests(unittest.TestCase):
     def test_save_leaves_no_temporary_file(self):
         settings.Settings(geometry='820x700').save(self.path)
         self.assertEqual([p.name for p in self.base.iterdir()], ['settings.json'])
+
+    def test_failed_replace_removes_temporary_file(self):
+        with patch('settings.os.replace', side_effect=OSError('locked')):
+            self.assertFalse(settings.Settings(geometry='820x700').save(self.path))
+        self.assertFalse((self.base / 'settings.json.tmp').exists())
 
 
 class GeometryTests(unittest.TestCase):

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from tkinter import filedialog, ttk
 
-from dnd import disable_drop, enable_drop, is_drag_over, take_dropped_files
+from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
 from jobs import BackgroundTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
 from ui import Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact
@@ -480,10 +480,7 @@ class App(tk.Tk):
             if self.jobs:
                 self.select_job(self.jobs[0])
             else:
-                self._syncing = True
-                self.archive_var.set("")
-                self.dest_var.set("")
-                self._syncing = False
+                self._set_sync_vars(archive="", dest="")
         if not self.jobs:
             self.status.set(EMPTY_STATUS)
             self._empty_layout()
@@ -653,7 +650,7 @@ class App(tk.Tk):
             else:
                 self.dest_var.set(folder)
 
-    def on_drop_files(self, paths):
+    def on_drop_files(self, paths, truncated: int = 0):
         if self.busy:
             self.status.set("解凍中です。追加や保存先の変更は完了後にできます。")
             return
@@ -688,15 +685,27 @@ class App(tk.Tk):
             self.select_job(self.selected)
         self.drop_title.configure(text=f"{len(self.jobs)} 件の書庫 · ファイルを追加できます" if self.jobs else "ここにファイルをドロップ")
         if rejected:
-            self.status.set("追加できません（未対応またはファイルがありません）: " + ", ".join(rejected))
+            messages.append("追加できません（未対応またはファイルがありません）: " + ", ".join(rejected))
+        if truncated:
+            messages.append(f"一度に追加できるのは{MAX_FILES}件までです。残り{truncated}件は追加されていません。")
+        if messages:
+            self.status.set(" ".join(messages))
         self._update_buttons()
+
+    def _set_sync_vars(self, archive: str | None = None, dest: str | None = None):
+        """trace を発火させずに入力欄を更新する (None は据え置き)。"""
+        self._syncing = True
+        try:
+            if archive is not None:
+                self.archive_var.set(archive)
+            if dest is not None:
+                self.dest_var.set(dest)
+        finally:
+            self._syncing = False
 
     def select_job(self, job):
         self.selected = job
-        self._syncing = True
-        self.archive_var.set(str(job.archive))
-        self.dest_var.set(job.result or str(available_dest(job.dest)))
-        self._syncing = False
+        self._set_sync_vars(str(job.archive), job.result or str(available_dest(job.dest)))
         for item in self.jobs:
             self._sync_card_chrome(item)
         self._scroll_card_into_view(job)
@@ -905,12 +914,12 @@ class App(tk.Tk):
             current = self._extract_total - len(self._pending)
             self._set_status(f"解凍中 ({current}/{self._extract_total}): {job.archive.name}", "⏳")
             return
+        done = sum(j.state == "done" for j in self._batch)
+        remaining = len(self._batch) - done
         self.busy = False
         self._extracting = None
         self._batch = []
         self._update_buttons()
-        done = sum(j.state == "done" for j in self.jobs)
-        remaining = len(self.jobs) - done
         self._set_status(f"完了: {done} 件" + (f" / 未完了 {remaining} 件。書庫のメッセージを確認してください。" if remaining else "。フォルダを開いて確認できます。"),
                          "⚠️" if remaining else "✅")
         self._notify_done(done)
@@ -953,8 +962,12 @@ class App(tk.Tk):
         if drag != self._drag_over:
             self._drag_over = drag
             paint_drop_area(self, drag)
-        for paths in take_dropped_files(self):
-            self.on_drop_files(paths)
+        dropped = take_dropped_files(self)
+        truncated = take_truncated_files(self)
+        if not dropped and truncated:
+            dropped = [[]]
+        for paths in dropped:
+            self.on_drop_files(paths, truncated)
         if self._extracting:
             task, job = self._extracting
             for kind, payload in task.poll():
@@ -1123,10 +1136,7 @@ class App(tk.Tk):
             job.card.destroy()
         self.jobs.clear()
         self.selected = None
-        self._syncing = True
-        self.archive_var.set("")
-        self.dest_var.set("")
-        self._syncing = False
+        self._set_sync_vars(archive="", dest="")
         self.drop_title.configure(text="ここにファイルをドロップ")
         self.status.set(EMPTY_STATUS)
         self._empty_layout()
