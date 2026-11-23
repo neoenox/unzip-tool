@@ -138,6 +138,13 @@ class UITests(unittest.TestCase):
                 constructor.assert_called_once_with('update', '')
                 self.assertGreater(self.app._settings.last_update_check, 0)
 
+    def test_update_chip_colours_follow_state(self):
+        from ui import UPDATE_CHIP_STYLES, UPDATE_DEFAULT_TEXT
+        self.app._set_update_text('最新版を確認しています…', 'checking')
+        self.assertEqual(self.app.update_chip.cget('bg'), UPDATE_CHIP_STYLES['checking'][0])
+        self.app._set_update_text(UPDATE_DEFAULT_TEXT, 'latest')
+        self.assertEqual(self.app.update_chip.cget('fg'), UPDATE_CHIP_STYLES['latest'][1])
+
     def test_update_check_falls_back_to_thread_when_spawn_fails(self):
         from unittest.mock import Mock
         task = Mock()
