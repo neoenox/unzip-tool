@@ -633,34 +633,61 @@ class App(tk.Tk):
         if paths:
             self.on_drop_files(list(paths))
 
+    def _move_done_result(self, job, parent: Path) -> bool:
+        """完了済みの結果フォルダを指定した親フォルダへ移動する。"""
+        old = Path(job.result) if job.result else None
+        if old is None or not old.is_dir():
+            return False
+        target = available_dest(parent / old.name)
+        try:
+            old.rename(target)
+        except OSError as error:
+            self.status.set(f"結果を移動できません: {error}")
+            return False
+        job.dest = target
+        job.result = str(target)
+        job.dest_customized = True
+        self._remember_dest(parent)
+        self._sync_card_chrome(job)
+        if self.selected is job:
+            self.select_job(job)
+        self.status.set(f"保存先を {target} に変更しました")
+        return True
+
     def choose_dest_for(self, job) -> bool:
-        """カード単位の保存先変更。個別設定として記録し、一括変更では上書きしない。"""
+        """カード単位の保存先変更。完了済みの結果も移動する。"""
         if self.busy or job not in self.jobs:
             return False
         folder = filedialog.askdirectory(title="この書庫の保存先フォルダを選ぶ")
-        if folder:
-            job.dest = Path(folder) / default_dest_for(job.archive).name
-            job.dest_customized = True
-            self._remember_dest(job.dest.parent)
-            self._sync_card_chrome(job)
-            if self.selected is job:
-                self.select_job(job)
-            return True
-        return False
+        if not folder:
+            return False
+        parent = Path(folder)
+        if job.state == "done" and job.result:
+            return self._move_done_result(job, parent)
+        job.dest = parent / default_dest_for(job.archive).name
+        job.dest_customized = True
+        self._remember_dest(parent)
+        self._sync_card_chrome(job)
+        if self.selected is job:
+            self.select_job(job)
+        return True
 
     def choose_dest(self):
         folder = filedialog.askdirectory(title="保存先の親フォルダを選ぶ")
-        if folder:
-            self._custom_parent = Path(folder)
-            self._remember_dest(self._custom_parent)
-            for job in self.jobs:
-                if job.state != "done" and not job.dest_customized:
-                    job.dest = self._custom_parent / default_dest_for(job.archive).name
-                self._sync_card_chrome(job)
-            if self.selected:
-                self.select_job(self.selected)
-            else:
-                self.dest_var.set(folder)
+        if not folder:
+            return
+        self._custom_parent = Path(folder)
+        self._remember_dest(self._custom_parent)
+        for job in self.jobs:
+            if job.state == "done" and job.result:
+                self._move_done_result(job, self._custom_parent)
+            elif job.state != "done" and not job.dest_customized:
+                job.dest = self._custom_parent / default_dest_for(job.archive).name
+            self._sync_card_chrome(job)
+        if self.selected:
+            self.select_job(self.selected)
+        else:
+            self._set_sync_vars(dest=folder)
 
     def on_drop_files(self, paths, truncated: int = 0):
         if self.busy:

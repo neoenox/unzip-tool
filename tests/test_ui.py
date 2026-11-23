@@ -398,6 +398,26 @@ class UITests(unittest.TestCase):
         self.app.dest_var.set(str(other / 'manual'))
         self.assertTrue(second.dest_customized)
 
+    def test_done_result_can_be_moved_after_extract(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        self.app.start_extract()
+        self.pump(lambda: job.state == 'done')
+        old = Path(job.result)
+        self.assertTrue(old.is_dir())
+        target = self.base / 'moved'
+        target.mkdir()
+        with patch('app.filedialog.askdirectory', return_value=str(target)):
+            self.app.choose_dest()
+        self.app.update()
+        moved = target / old.name
+        self.assertFalse(old.exists())
+        self.assertTrue(moved.is_dir())
+        self.assertEqual(job.result, str(moved))
+        self.assertEqual(job.dest, moved)
+        self.assertIn('保存先を', self.app.status.get())
+
     def test_diskfull_action_changes_dest_and_retries(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
         self.pump(lambda: self.app.jobs[0].state == 'ready')
