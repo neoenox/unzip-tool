@@ -5,6 +5,23 @@ from version import VERSION
 
 UPDATE_DEFAULT_TEXT = f'ZIP・7z・RAR・TAR  /  v{VERSION}'
 
+UPDATE_CHIP_STYLES = {
+    "idle": ("#eef2f7", "#526276"),
+    "checking": ("#dbeafe", "#1d4ed8"),
+    "downloading": ("#dbeafe", "#1d4ed8"),
+    "applying": ("#fef3c7", "#b45309"),
+    "latest": ("#dcfce7", "#15803d"),
+    "notice": ("#dcfce7", "#15803d"),
+    "error": ("#fee2e2", "#b91c1c"),
+}
+
+
+def set_update_chip(view, text, kind="idle"):
+    """更新状態を色付きチップで表示する。"""
+    view.update_text.set(text)
+    bg, fg = UPDATE_CHIP_STYLES.get(kind, UPDATE_CHIP_STYLES["idle"])
+    view.update_chip.configure(bg=bg, fg=fg)
+
 
 # --- Design tokens -------------------------------------------------------
 # One palette for the whole app. Test-asserted colours are kept verbatim.
@@ -156,9 +173,10 @@ def build_widgets(view):
     titles = ttk.Frame(header)
     titles.pack(side="left", padx=(12, 0))
     ttk.Label(titles, text=view.title(), style="Title.TLabel").pack(anchor="w")
-    view.update_text = tk.StringVar(value=f"ZIP・7z・RAR・TAR  /  v{VERSION}")
-    ttk.Label(titles, textvariable=view.update_text,
-              style="Muted.TLabel", font=font(9)).pack(anchor="w", pady=(3, 0))
+    view.update_text = tk.StringVar(value=UPDATE_DEFAULT_TEXT)
+    view.update_chip = tk.Label(titles, textvariable=view.update_text, bg="#eef2f7",
+                                fg="#526276", font=font(9, "bold"), padx=8, pady=2)
+    view.update_chip.pack(anchor="w", pady=(3, 0))
     header_actions = ttk.Frame(header)
     header_actions.pack(side="right")
     view.clear_btn = ttk.Button(header_actions, text="一覧をクリア",
@@ -171,8 +189,6 @@ def build_widgets(view):
                                style="Quiet.TButton", command=view.show_help)
     view.help_btn.pack(side='right', padx=(0, 6))
     Tooltip(view.help_btn, lambda: "対応形式・制限・ショートカット (F1)")
-    view.update_text = tk.StringVar(value=UPDATE_DEFAULT_TEXT)
-    ttk.Label(body, textvariable=view.update_text, style='Muted.TLabel').pack(anchor='w', pady=(4, 8))
     view.steps_frame = ttk.Frame(body)
     view.steps_frame.pack(fill="x", pady=(18, 10))
     view.step_labels = []

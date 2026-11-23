@@ -14,7 +14,7 @@ from tkinter import filedialog, ttk
 from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
 from jobs import BackgroundTask, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
-from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact
+from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact, set_update_chip
 from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
@@ -1042,11 +1042,14 @@ class App(tk.Tk):
             self._poll_listing()
         self._poll_id = self.after(50, self._poll_events)
 
+    def _set_update_text(self, text: str, kind: str = "idle") -> None:
+        set_update_chip(self, text, kind)
+
     def _show_update_notice(self) -> None:
         version = self._settings.update_notice
         if not version:
             return
-        self.update_text.set(f"v{version} に自動更新しました")
+        self._set_update_text(f"v{version} に自動更新しました", "notice")
         self._notice_after = self.after(12000, self._clear_update_notice)
 
     def _clear_update_notice(self) -> None:
@@ -1056,7 +1059,7 @@ class App(tk.Tk):
         if self._settings.update_notice:
             self._settings.update_notice = ""
             self._save_settings()
-        self.update_text.set(UPDATE_DEFAULT_TEXT)
+        self._set_update_text(UPDATE_DEFAULT_TEXT, "idle")
 
     def _auto_update_due(self) -> bool:
         last = self._settings.last_update_check
@@ -1090,16 +1093,16 @@ class App(tk.Tk):
             self._update_phase = 'checking'
             self.update_btn.configure(text='確認中…', state='disabled')
             if auto:
-                self.update_text.set('最新版を確認しています…')
+                self._set_update_text('最新版を確認しています…', "checking")
         except Exception:
             self._updating = None
             self._update_phase = 'idle'
             if not auto:
-                self.update_text.set('更新を確認できませんでした。もう一度お試しください。')
+                self._set_update_text('更新を確認できませんでした。もう一度お試しください。', "error")
 
     def _start_update_download(self, package: dict) -> None:
         self._update_package = package
-        self.update_text.set(f"新版 v{package['version']} をダウンロードしています…")
+        self._set_update_text(f"新版 v{package['version']} をダウンロードしています…", "downloading")
         try:
             self._updating = self._new_update_task('download', package)
             self._update_phase = 'downloading'
@@ -1107,7 +1110,7 @@ class App(tk.Tk):
         except Exception as error:
             self._updating = None
             self._update_phase = 'idle'
-            self.update_text.set(f'ダウンロードを開始できません: {error_message(error)}')
+            self._set_update_text(f'ダウンロードを開始できません: {error_message(error)}', "error")
 
     def _apply_update(self, path: str) -> None:
         try:
@@ -1117,7 +1120,7 @@ class App(tk.Tk):
         except OSError as error:
             self._update_phase = 'idle'
             self.update_btn.configure(text='更新を確認', state='normal')
-            self.update_text.set(f'更新を適用できません: {error}')
+            self._set_update_text(f'更新を適用できません: {error}', "error")
             return
         version = (self._update_package or {}).get('version', '')
         if version:
@@ -1126,7 +1129,7 @@ class App(tk.Tk):
         self._downloaded = path
         self._update_phase = 'applying'
         self.update_btn.configure(text='更新を適用中…', state='disabled')
-        self.update_text.set('更新を適用しています。アプリを終了します。')
+        self._set_update_text('更新を適用しています。アプリを終了します。', "applying")
         self.after(300, self._on_close)
 
     def _poll_update(self):
@@ -1139,7 +1142,7 @@ class App(tk.Tk):
                 if phase == 'downloading':
                     done, total = payload
                     pct = min(100, done * 100 // total) if total else 0
-                    self.update_text.set(f'新版をダウンロードしています… {pct}%')
+                    self._set_update_text(f'新版をダウンロードしています… {pct}%', "downloading")
                 continue
             if kind not in ('done', 'error'):
                 continue
@@ -1156,7 +1159,8 @@ class App(tk.Tk):
         if kind == 'error':
             self._update_phase = 'idle'
             self.update_btn.configure(text='更新を確認', state='normal')
-            self.update_text.set(UPDATE_DEFAULT_TEXT if auto else (payload or '更新を確認できません。'))
+            self._set_update_text(UPDATE_DEFAULT_TEXT if auto else (payload or '更新を確認できません。'),
+                                  "idle" if auto else "error")
             return
         version = payload['version']
         self._update_url = payload.get('url')
@@ -1165,9 +1169,9 @@ class App(tk.Tk):
             self._update_phase = 'idle'
             self.update_btn.configure(text='更新を確認', state='normal')
             if payload['newer']:
-                self.update_text.set(f"新版 v{version} があります · 自動更新ファイルを確認できませんでした")
+                self._set_update_text(f"新版 v{version} があります · 自動更新ファイルを確認できませんでした", "error")
             else:
-                self.update_text.set(f"最新公開版 v{version} · このアプリ v{VERSION}")
+                self._set_update_text(f"最新公開版 v{version} · このアプリ v{VERSION}", "latest")
             return
         self._start_update_download(package)
 
@@ -1175,7 +1179,7 @@ class App(tk.Tk):
         if kind == 'error':
             self._update_phase = 'idle'
             self.update_btn.configure(text='更新を確認', state='normal')
-            self.update_text.set(payload or 'ダウンロードに失敗しました。もう一度お試しください。')
+            self._set_update_text(payload or 'ダウンロードに失敗しました。もう一度お試しください。', "error")
             return
         self._apply_update(payload)
 
