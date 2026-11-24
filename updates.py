@@ -1,9 +1,11 @@
 """Manual, bounded checks against the application's official release feed."""
 import hashlib
+import io
 import json
 import re
 import shutil
 import ssl
+import subprocess
 import tempfile
 from pathlib import Path
 from urllib.error import URLError
@@ -24,6 +26,30 @@ def _is_certificate_error(error: Exception) -> bool:
     return isinstance(getattr(error, 'reason', None), ssl.SSLCertVerificationError)
 
 
+def _open_url(url: str, headers: dict, timeout: int):
+    """証明書エラー時に Windows の curl（システム証明書）で再試行する。"""
+    try:
+        return urlopen(Request(url, headers=headers), timeout=timeout)
+    except (URLError, OSError) as error:
+        if not _is_certificate_error(error):
+            raise
+        curl = shutil.which('curl.exe') or shutil.which('curl')
+        if not curl:
+            raise
+        command = [curl, '--fail', '--silent', '--show-error', '--location',
+                   '--max-time', str(timeout)]
+        for name, value in headers.items():
+            command += ['-H', f'{name}: {value}']
+        command.append(url)
+        try:
+            result = subprocess.run(command, capture_output=True, timeout=timeout + 10)
+        except (OSError, subprocess.SubprocessError):
+            raise error
+        if result.returncode != 0:
+            raise error
+        return io.BytesIO(result.stdout)
+
+
 def version_number(value):
     if not isinstance(value, str) or not re.fullmatch(r'v?\d+\.\d+\.\d+', value):
         raise ValueError('更新情報のバージョンを確認できませんでした。後でもう一度お試しください。')
@@ -31,17 +57,18 @@ def version_number(value):
 
 
 def _fetch_release():
-    request = Request(API_URL, headers={'Accept': 'application/vnd.github+json',
-                                       'User-Agent': f'KantanKaiko/{VERSION}'})
+    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': f'KantanKaiko/{VERSION}'}
     try:
-        with urlopen(request, timeout=8) as response:
+        with _open_url(API_URL, headers, 8) as response:
             raw = response.read(256 * 1024 + 1)
         if len(raw) > 256 * 1024:
             raise ValueError('更新情報が大きすぎます。後でもう一度お試しください。')
         release = json.loads(raw)
     except (URLError, TimeoutError, OSError) as error:
         if _is_certificate_error(error):
-            raise ValueError('更新情報を取得できません。証明書やプロキシの設定を確認して再試行してください。') from error
+            raise ValueError(
+                '更新情報を取得できません。証明書やプロキシの設定、PCの日時を確認して再試行してください。'
+            ) from error
         raise ValueError('更新情報を取得できません。インターネット接続を確認して再試行してください。') from error
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError('更新情報を読み取れませんでした。後でもう一度お試しください。') from error
@@ -111,8 +138,8 @@ def download_update(package: dict, on_progress=None) -> str:
     digest = hashlib.sha256()
     done = 0
     try:
-        request = Request(url, headers={'User-Agent': f'KantanKaiko/{VERSION}'})
-        with urlopen(request, timeout=30) as response, target.open('wb') as stream:
+        with _open_url(url, {'User-Agent': f'KantanKaiko/{VERSION}'}, 30) as response, \
+                target.open('wb') as stream:
             while True:
                 chunk = response.read(64 * 1024)
                 if not chunk:
