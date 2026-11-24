@@ -6,6 +6,7 @@ import ssl
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import URLError
 
@@ -39,10 +40,24 @@ class UpdateTests(unittest.TestCase):
 
     def test_certificate_errors_get_distinct_guidance(self):
         certificate_error = ssl.SSLCertVerificationError('unable to get issuer certificate')
+        curl_failure = SimpleNamespace(returncode=1, stdout=b'', stderr=b'failed')
         for failure in (certificate_error, URLError(certificate_error)):
-            with patch('updates.urlopen', side_effect=failure):
+            with patch('updates.urlopen', side_effect=failure), \
+                    patch('updates.shutil.which', return_value='curl.exe'), \
+                    patch('updates.subprocess.run', return_value=curl_failure):
                 with self.assertRaisesRegex(ValueError, '証明書'):
                     check_latest('1.0.0')
+
+    def test_certificate_error_falls_back_to_system_curl(self):
+        body, _payload = self.release_with_asset()
+        certificate_error = ssl.SSLCertVerificationError('bad cert')
+        curl_ok = SimpleNamespace(returncode=0, stdout=body.getvalue(), stderr=b'')
+        with patch('updates.urlopen', side_effect=certificate_error), \
+                patch('updates.shutil.which', return_value='curl.exe'), \
+                patch('updates.subprocess.run', return_value=curl_ok) as run:
+            result = check_latest('1.9.0')
+        self.assertTrue(result['newer'])
+        run.assert_called_once()
 
     def release_with_asset(self, tag='v1.10.0'):
         payload = b'installer-bytes'
