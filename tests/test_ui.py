@@ -167,6 +167,16 @@ class UITests(unittest.TestCase):
         self.assertIsNone(self.app._updating)
         self.assertEqual(self.app.update_text.get(), guidance)
 
+    def test_stale_update_notice_is_cleared_on_startup(self):
+        """版が変わっていないのに「更新しました」と表示しない。"""
+        import settings
+        settings.Settings(update_notice='0.0.1').save()
+        app = App()
+        app.withdraw()
+        self.addCleanup(app._on_close)
+        app.update()
+        self.assertEqual(app._settings.update_notice, '')
+
     def test_update_notice_shown_after_restart(self):
         from ui import UPDATE_DEFAULT_TEXT
         self.app._settings.update_notice = '1.2.6'
@@ -240,7 +250,8 @@ class UITests(unittest.TestCase):
         self.app.start_extract()
         self.app.cancel_extract()
         self.assertFalse((self.base / 'one').exists())
-        self.assertFalse(list(self.base.glob('.kantan-*')))
+        # 停止と後始末は UI を止めない (cancel_extract はすぐ戻る)
+        self.pump(lambda: not list(self.base.glob('.kantan-*')))
         self.app.start_extract()
         self.pump(lambda: self.app.jobs[0].state == 'done')
 
@@ -408,8 +419,9 @@ class UITests(unittest.TestCase):
         self.assertTrue(old.is_dir())
         target = self.base / 'moved'
         target.mkdir()
+        # 完了済みの結果を動かせるのはカード単位の「変更」だけ
         with patch('app.filedialog.askdirectory', return_value=str(target)):
-            self.app.choose_dest()
+            job.dest_btn.invoke()
         self.app.update()
         moved = target / old.name
         self.assertFalse(old.exists())
@@ -417,6 +429,36 @@ class UITests(unittest.TestCase):
         self.assertEqual(job.result, str(moved))
         self.assertEqual(job.dest, moved)
         self.assertIn('保存先を', self.app.status.get())
+
+    def test_bulk_dest_change_leaves_completed_results_in_place(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        self.app.start_extract()
+        self.pump(lambda: job.state == 'done')
+        old = Path(job.result)
+        other = self.base / 'bulk'
+        other.mkdir()
+        with patch('app.filedialog.askdirectory', return_value=str(other)):
+            self.app.choose_dest()
+        self.app.update()
+        self.assertTrue(old.is_dir(), '一括変更は完了済みの結果を動かさない')
+        self.assertEqual(job.result, str(old))
+        self.assertEqual(job.dest, old)
+
+    def test_moving_result_to_its_own_folder_keeps_the_name(self):
+        self.app.on_drop_files([str(self.archive('one.zip'))])
+        self.pump(lambda: self.app.jobs[0].state == 'ready')
+        job = self.app.jobs[0]
+        self.app.start_extract()
+        self.pump(lambda: job.state == 'done')
+        old = Path(job.result)
+        with patch('app.filedialog.askdirectory', return_value=str(old.parent)):
+            job.dest_btn.invoke()
+        self.app.update()
+        self.assertTrue(old.is_dir())
+        self.assertEqual(job.result, str(old))
+        self.assertFalse(list(old.parent.glob(f'{old.name} (*)')))
 
     def test_diskfull_action_changes_dest_and_retries(self):
         self.app.on_drop_files([str(self.archive('one.zip'))])
@@ -498,6 +540,25 @@ class UITests(unittest.TestCase):
         self.pump(lambda: job.state == 'ready')
         self.app.update()
         self.assertFalse(job.progress.winfo_manager())
+
+    def test_password_entry_is_readonly_while_extracting(self):
+        """解凍中はパスワード欄を編集できない (入力値と表示のズレを防ぐ)。"""
+        src = self.base / 'secret4.7z'
+        with py7zr.SevenZipFile(src, 'w', password='secret') as z:
+            z.writestr('hello', 'hello.txt')
+        self.app.on_drop_files([str(src)])
+        job = self.app.jobs[0]
+        self.pump(lambda: job.pw_frame.winfo_manager())
+        job.pw_var.set('secret')
+        with patch('app.BackgroundTask') as task:
+            task.return_value.poll.return_value = []
+            self.app.start_extract()
+            self.app.update()
+            self.assertTrue(self.app.busy)
+            self.assertEqual(str(job.pw_entry.cget('state')), 'readonly')
+        self.app.cancel_extract()
+        self.app.update()
+        self.assertEqual(str(job.pw_entry.cget('state')), 'normal')
 
     def test_wrong_password_highlights_entry(self):
         src = self.base / 'secret3.7z'
