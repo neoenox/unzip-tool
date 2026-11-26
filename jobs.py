@@ -17,17 +17,55 @@ from unzipper import (
 )
 
 
+def _make_staging(dest) -> Path:
+    """保存先と同じ場所に、公開前の書き込み先を作る。"""
+    parent = Path(dest).absolute().parent
+    parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix='.kantan-', dir=parent))
 
-class ThreadTask:
-    """子プロセスを作れない環境向けの BackgroundTask 互換ワーカー。"""
+
+class _OwnedTask:
+    """停止待ちと後始末の共通部分。結果の公開 (rename) は親 (poll) だけが行う。"""
+
+    def __init__(self, operation, dest):
+        self.operation = operation
+        self.dest = dest
+        self.staging = None
+        self.finished = False
+        self._stopped = threading.Event()
+        self._stopped.set()  # 停止処理は走っていない
+        if operation == 'extract':
+            self.staging = _make_staging(dest)
+            self._stopped.clear()  # 公開か後始末が終わるまで待たせる
+
+    def _clean_staging(self):
+        if self.staging is None:
+            return
+        try:
+            clean_staging(self.staging)
+        except OSError:
+            pass  # 公開済みの結果をクリーンアップ失敗で壊さない
+
+    def wait_stopped(self, timeout=None) -> bool:
+        """停止処理と後始末が終わるまで待つ (UI スレッドでは短い timeout で)。"""
+        return self._stopped.wait(timeout)
+
+
+class ThreadTask(_OwnedTask):
+    """子プロセスを作れない環境向けの BackgroundTask 互換ワーカー。
+
+    解凍も BackgroundTask と同じ手順を守る: スレッドは一時フォルダへ書き、
+    保存先への公開 (rename) は poll() を呼ぶ親 (UI) だけが行う。
+    """
 
     def __init__(self, operation, archive, password=None, dest=None):
-        self.finished = False
+        super().__init__(operation, dest)
+        self._cancelled = threading.Event()
         self._events = queue.Queue()
         connection = SimpleNamespace(send=self._events.put, close=lambda: None)
         self._thread = threading.Thread(
             target=self._run,
-            args=(connection, operation, archive, password, dest),
+            args=(connection, operation, archive, password, self.staging),
             daemon=True,
         )
         self._thread.start()
@@ -37,20 +75,48 @@ class ThreadTask:
             _work(connection, *args)
         finally:
             self.finished = True
+            if self._cancelled.is_set():
+                # 書き込みが止まった後で片付ける (書き込み中に消さない)。
+                self._clean_staging()
+                self._stopped.set()
 
     def poll(self):
+        if self._cancelled.is_set():
+            return []
         events = []
         while len(events) < 100:
             try:
-                events.append(self._events.get_nowait())
+                kind, payload = self._events.get_nowait()
             except queue.Empty:
                 break
-        if self.finished and self._events.empty():
-            self.finished = True
+            if kind in ('done', 'error', 'password'):
+                events.append(_publish(self, kind, payload))
+                self.finished = True
+                self._clean_staging()
+                self._stopped.set()
+                return events
+            events.append((kind, payload))
         return events
 
     def cancel(self):
+        self._cancelled.set()
+        if self.finished:
+            # 終了直後で、まだ poll されていない未公開の結果を片付ける。
+            self._clean_staging()
+            self._stopped.set()
+            return
         self.finished = True
+        # スレッドは強制終了できない。終了後の片付けは _run が行うため、ここでは待たない。
+
+
+def _publish(task, kind, payload):
+    """結果の公開 (rename) は親だけが行う。ワーカーの done を結果パスに変える。"""
+    if kind != 'done' or task.operation != 'extract':
+        return kind, payload
+    try:
+        return kind, str(publish_staging(task.staging, task.dest))
+    except Exception as error:
+        return 'error', error_message(error)
 
 
 def _work(connection, operation, archive, password, staging):
@@ -89,16 +155,9 @@ def _work(connection, operation, archive, password, staging):
         connection.close()
 
 
-class BackgroundTask:
+class BackgroundTask(_OwnedTask):
     def __init__(self, operation, archive, password=None, dest=None):
-        self.operation = operation
-        self.dest = dest
-        self.staging = None
-        self.finished = False
-        if operation == 'extract':
-            parent = Path(dest).absolute().parent
-            parent.mkdir(parents=True, exist_ok=True)
-            self.staging = Path(tempfile.mkdtemp(prefix='.kantan-', dir=parent))
+        super().__init__(operation, dest)
         context = mp.get_context('spawn')
         self.connection, child = context.Pipe(duplex=False)
         self.process = context.Process(
@@ -116,14 +175,6 @@ class BackgroundTask:
         finally:
             child.close()
 
-    def _clean_staging(self):
-        if self.staging is None:
-            return
-        try:
-            clean_staging(self.staging)
-        except OSError:
-            pass  # 公開済みの結果をクリーンアップ失敗で壊さない
-
     def poll(self):
         if self.finished:
             return []
@@ -132,6 +183,7 @@ class BackgroundTask:
             self.finished = True
             self.connection.close()
             self._clean_staging()
+            self._stopped.set()
             return [('error', '処理が予期せず終了しました。もう一度お試しください。')]
         # Bound work per Tk tick so huge archives cannot starve the GUI.
         for _ in range(100):
@@ -143,29 +195,37 @@ class BackgroundTask:
                 kind, payload = 'error', '処理が予期せず終了しました。もう一度お試しください。'
             if kind in ('done', 'error', 'password'):
                 self.process.join(1)
-                if kind == 'done' and self.operation == 'extract':
-                    try:
-                        payload = str(publish_staging(self.staging, self.dest))
-                    except Exception as error:
-                        kind, payload = 'error', error_message(error)
+                events.append(_publish(self, kind, payload))
                 self.finished = True
                 self.connection.close()
                 self._clean_staging()
-                events.append((kind, payload))
+                self._stopped.set()
                 return events
             events.append((kind, payload))
         return events
 
     def cancel(self):
         if self.finished:
+            self._stopped.set()
             return
         self.finished = True
+        # 停止 (taskkill の待ち合わせを含む) と後始末は UI スレッドで待たない。
+        # 子プロセスが実際に終わってから片付ける。
+        self._stopped.clear()
+        threading.Thread(target=self._stop_and_clean, name='kantan-cancel', daemon=True).start()
+
+    def _stop_and_clean(self):
         try:
             self._stop_process()
+        except Exception:
+            pass  # 停止に失敗しても、パイプと一時フォルダは必ず片付ける
         finally:
-            # Always release the pipe and the staging folder, even if stopping failed.
-            self.connection.close()
+            try:
+                self.connection.close()
+            except Exception:
+                pass
             self._clean_staging()
+            self._stopped.set()
 
     def _stop_process(self):
         if not self.process.is_alive():

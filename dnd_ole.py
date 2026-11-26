@@ -309,7 +309,9 @@ def revoke(hwnd: int) -> None:
         ole32 = _ole32()
         ole32.RevokeDragDrop(int(hwnd))
     except Exception:
-        pass
+        # 解除できなかった登録は生かしたままにする。参照を捨てると OLE 側が
+        # 解放済みのターゲットを呼び出して落ちる。
+        return
     _targets.pop(int(hwnd), None)
     _drag_over.pop(int(hwnd), None)
     _drag_allowed.pop(int(hwnd), None)

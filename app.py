@@ -15,7 +15,8 @@ from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped
 from jobs import BackgroundTask, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
 from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact, set_update_chip
-from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
+from unzipper import (DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for, error_message,
+                      is_supported)
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
 
@@ -166,6 +167,10 @@ class App(tk.Tk):
         if not self._dnd_enabled:
             self.dnd_hint.configure(text="「ファイルを選ぶ」から追加できます")
         self._poll_id = self.after(50, self._poll_events)
+        if self._settings.update_notice and self._settings.update_notice != VERSION:
+            # 更新が実際に適用されていない (版が違う) のに「更新しました」と出さない。
+            self._settings.update_notice = ""
+            self._save_settings()
         if self._settings.update_notice:
             self._show_update_notice()
         delay = 12800 if self._settings.update_notice else 800
@@ -454,7 +459,9 @@ class App(tk.Tk):
                 text = job.message.cget("text")
             except Exception:
                 text = ""
-            if "空き容量" in text:
+            # 表示文言ではなく、案内文の定義そのもので判定する (文言変更で
+            # 回復ボタンが黙って消えないように)。
+            if DISK_FULL_MESSAGE in text:
                 return ("保存先を変更して再試行", "diskfull")
         return None
 
@@ -638,7 +645,11 @@ class App(tk.Tk):
         old = Path(job.result) if job.result else None
         if old is None or not old.is_dir():
             return False
-        target = available_dest(parent / old.name)
+        target = parent / old.name
+        if os.path.normcase(str(target)) == os.path.normcase(str(old)):
+            # 同じ場所を選び直しただけ。連番フォルダへ改名しない。
+            return True
+        target = available_dest(target)
         try:
             old.rename(target)
         except OSError as error:
@@ -672,18 +683,23 @@ class App(tk.Tk):
             self.select_job(job)
         return True
 
+    def _retarget_unfinished(self, parent: Path) -> None:
+        """未完了で個別指定していない書庫の保存先を親フォルダに合わせる。
+
+        完了済みの結果フォルダは動かさない（移動はカード単位の「変更」だけ）。
+        """
+        for job in self.jobs:
+            if job.state != "done" and not job.dest_customized:
+                job.dest = parent / default_dest_for(job.archive).name
+            self._sync_card_chrome(job)
+
     def choose_dest(self):
         folder = filedialog.askdirectory(title="保存先の親フォルダを選ぶ")
         if not folder:
             return
         self._custom_parent = Path(folder)
         self._remember_dest(self._custom_parent)
-        for job in self.jobs:
-            if job.state == "done" and job.result:
-                self._move_done_result(job, self._custom_parent)
-            elif job.state != "done" and not job.dest_customized:
-                job.dest = self._custom_parent / default_dest_for(job.archive).name
-            self._sync_card_chrome(job)
+        self._retarget_unfinished(self._custom_parent)
         if self.selected:
             self.select_job(self.selected)
         else:
@@ -699,10 +715,7 @@ class App(tk.Tk):
             if path.is_dir():
                 self._custom_parent = path
                 self._remember_dest(path)
-                for job in self.jobs:
-                    if job.state != "done" and not job.dest_customized:
-                        job.dest = path / default_dest_for(job.archive).name
-                    self._sync_card_chrome(job)
+                self._retarget_unfinished(path)
                 continue
             if not path.is_file() or not is_supported(path):
                 rejected.append(path.name or str(path))
@@ -786,6 +799,8 @@ class App(tk.Tk):
         for widget in (self.choose_btn, self.dest_btn, self.dest_entry, self.clear_btn):
             widget.configure(state="disabled" if self.busy else "normal")
         for job in self.jobs:
+            # 解凍中はパスワード欄を書き換えさせない (入力値と表示のズレを防ぐ)。
+            job.pw_entry.configure(state="readonly" if self.busy else "normal")
             self._sync_card_chrome(job)
         self._sync_overall()
         self._sync_steps()
@@ -1317,12 +1332,19 @@ class App(tk.Tk):
             self.scan_progress.stop()
         except Exception:
             pass
-        for running in (self._listing, self._extracting):
-            if running:
-                try:
-                    running[0].cancel()
-                except Exception:
-                    pass  # closing the window must not depend on worker cleanup
+        running = [entry[0] for entry in (self._listing, self._extracting) if entry]
+        for task in running:
+            try:
+                task.cancel()
+            except Exception:
+                pass  # closing the window must not depend on worker cleanup
+        # 停止と後始末は cancel() 側で UI を止めずに進む。終了直前だけ短く待つ。
+        deadline = time.monotonic() + 5
+        for task in running:
+            try:
+                task.wait_stopped(max(0, deadline - time.monotonic()))
+            except Exception:
+                pass
         if self._updating:
             try:
                 self._updating.cancel()

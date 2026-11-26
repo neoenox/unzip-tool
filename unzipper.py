@@ -155,11 +155,17 @@ class PasswordRequiredError(ValueError):
     """A password is missing or incorrect."""
 
 
+# 空き容量不足の案内。UI (app._card_action) はこの文言で回復操作を出すため、
+# 文字列はここだけで定義し、表示側と判定側で食い違わないようにする。
+DISK_FULL_MESSAGE = ('保存先の空き容量が不足しています。'
+                     '空き容量を増やすか、別の保存先を選んで再試行してください。')
+
+
 def error_message(error: Exception) -> str:
     """Translate actionable filesystem/archive failures at the UI boundary."""
     if isinstance(error, OSError):
         if error.errno == errno.ENOSPC or getattr(error, 'winerror', None) == 112:
-            return '保存先の空き容量が不足しています。空き容量を増やすか、別の保存先を選んで再試行してください。'
+            return DISK_FULL_MESSAGE
         if error.errno in (errno.EACCES, errno.EPERM) or getattr(error, 'winerror', None) == 5:
             return 'ファイルにアクセスできません。書庫や保存先のアクセス権を確認し、別の保存先で再試行してください。'
     corrupt = [zipfile.BadZipFile, tarfile.ReadError, lzma.LZMAError]

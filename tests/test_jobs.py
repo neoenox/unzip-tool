@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import subprocess
+import threading
 import time
 import types
 import unittest
@@ -32,6 +33,11 @@ class JobTests(unittest.TestCase):
                     return kind, payload
             time.sleep(.02)
         self.fail('worker timeout')
+
+    def cancel_and_wait(self, task, timeout=20):
+        """cancel() は UI を止めないので、停止と後始末の完了を待ってから検証する。"""
+        task.cancel()
+        self.assertTrue(task.wait_stopped(timeout), 'cancel did not finish')
 
     def test_publish_survives_staging_cleanup_failure(self):
         dest = self.base / 'out'
@@ -74,7 +80,7 @@ class JobTests(unittest.TestCase):
         self.assertTrue(partial.exists())
         self.assertGreater(partial.stat().st_size, 0)
         self.assertTrue(task.process.is_alive())
-        task.cancel()
+        self.cancel_and_wait(task)
         self.assertFalse(task.process.is_alive())
         self.assertFalse((self.base / 'large').exists())
         self.assertFalse(list(self.base.glob('.kantan-*')))
@@ -99,7 +105,7 @@ class JobTests(unittest.TestCase):
         dest = self.base / 'out'
         task = BackgroundTask('extract', self.archive, dest=dest)
         task.process.join(20)
-        task.cancel()
+        self.cancel_and_wait(task)
         self.assertFalse(task.process.is_alive())
         self.assertFalse(dest.exists())
         self.assertFalse(list(self.base.glob('.kantan-*')))
@@ -108,10 +114,30 @@ class JobTests(unittest.TestCase):
     def test_live_cancel_stops_process_and_cleans_staging(self):
         task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
         self.assertTrue(task.process.is_alive())
-        task.cancel()
+        self.cancel_and_wait(task)
         self.assertFalse(task.process.is_alive())
         self.assertFalse(list(self.base.glob('.kantan-*')))
         self.assertFalse((self.base / 'out').exists())
+
+    def test_cancel_returns_before_stopping_finishes(self):
+        """停止処理で UI を待たせない (#cancel-freeze)。"""
+        task = BackgroundTask('extract', self.archive, dest=self.base / 'out')
+        release = threading.Event()
+        real_stop = task._stop_process
+
+        def slow_stop():
+            release.wait(5)
+            real_stop()
+
+        with mock.patch.object(task, '_stop_process', side_effect=slow_stop):
+            started = time.monotonic()
+            task.cancel()
+            elapsed = time.monotonic() - started
+            release.set()
+        self.assertLess(elapsed, 1.0, 'cancel must not block the UI thread')
+        self.assertTrue(task.wait_stopped(20))
+        self.assertFalse(task.process.is_alive())
+        self.assertFalse(list(self.base.glob('.kantan-*')))
 
     def test_cancel_cleans_up_when_taskkill_times_out(self):
         self.large_archive()
@@ -123,6 +149,7 @@ class JobTests(unittest.TestCase):
                 mock.patch.object(jobs.subprocess, 'CREATE_NO_WINDOW', 0x08000000, create=True), \
                 mock.patch.object(jobs.subprocess, 'run', side_effect=timeout) as run:
             task.cancel()
+            self.assertTrue(task.wait_stopped(20))
         run.assert_called_once()
         self.assertTrue(task.finished)
         self.assertFalse(task.process.is_alive())
@@ -135,8 +162,7 @@ class JobTests(unittest.TestCase):
         process = task.process
         self.addCleanup(lambda: (process.kill(), process.join(5)))
         with mock.patch.object(task, '_stop_process', side_effect=RuntimeError('boom')):
-            with self.assertRaises(RuntimeError):
-                task.cancel()
+            self.cancel_and_wait(task)
         self.assertTrue(task.finished)
         self.assertTrue(task.connection.closed)
         self.assertFalse(list(self.base.glob('.kantan-*')))
@@ -157,7 +183,7 @@ class JobTests(unittest.TestCase):
     def test_cancel_twice_does_not_repeat_cleanup(self):
         task = BackgroundTask('list', self.archive)
         self.addCleanup(task.cancel)
-        task.cancel()
+        self.cancel_and_wait(task)
         assert task.finished
         assert task.connection.closed
         task.cancel()  # no second close/terminate for a completed task
@@ -200,6 +226,29 @@ class JobTests(unittest.TestCase):
         with mock.patch('updates.download_update', side_effect=ValueError('検証失敗')):
             jobs._work(connection, 'download', package, None, None)
         self.assertEqual(connection.send.call_args.args[0], ('error', '検証失敗'))
+
+    def test_thread_task_extract_publishes_from_staging(self):
+        """ThreadTask も一時フォルダへ書き、公開は親 (poll) だけが行う。"""
+        dest = self.base / 'out'
+        task = ThreadTask('extract', self.archive, dest=dest)
+        self.assertFalse(dest.exists(), 'worker must not publish before the parent polls')
+        kind, payload = self.finish(task)
+        self.assertEqual(kind, 'done')
+        self.assertEqual((Path(payload) / 'hello.txt').read_text(), 'hello')
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+
+    def test_thread_task_cancel_before_poll_discards_result(self):
+        """終了後・poll 前にキャンセルしても、未公開の結果を残さない。"""
+        dest = self.base / 'out'
+        task = ThreadTask('extract', self.archive, dest=dest)
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not task.finished:
+            time.sleep(.01)
+        self.assertTrue(task.finished)
+        task.cancel()
+        self.assertFalse(dest.exists(), '未 poll の結果は公開しない')
+        self.assertFalse(list(self.base.glob('.kantan-*')))
+        self.assertEqual(task.poll(), [])
 
     def test_thread_task_reports_result_without_spawn(self):
         payload = {'newer': False, 'version': '1.2.8', 'url': 'x', 'update': None}

@@ -1,6 +1,5 @@
 """Manual, bounded checks against the application's official release feed."""
 import hashlib
-import io
 import json
 import re
 import shutil
@@ -41,13 +40,19 @@ def _open_url(url: str, headers: dict, timeout: int):
         for name, value in headers.items():
             command += ['-H', f'{name}: {value}']
         command.append(url)
+        # インストーラー (最大150MB) をメモリに載せないよう、応答は一時ファイルへ流す。
+        handle = tempfile.TemporaryFile()
         try:
-            result = subprocess.run(command, capture_output=True, timeout=timeout + 10)
+            result = subprocess.run(command, stdout=handle, stderr=subprocess.DEVNULL,
+                                    timeout=timeout + 10)
         except (OSError, subprocess.SubprocessError):
+            handle.close()
             raise error
         if result.returncode != 0:
+            handle.close()
             raise error
-        return io.BytesIO(result.stdout)
+        handle.seek(0)
+        return handle
 
 
 def version_number(value):
