@@ -15,7 +15,8 @@ from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped
 from jobs import BackgroundTask, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
 from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact, set_update_chip
-from unzipper import Entry, available_dest, default_dest_for, error_message, is_supported
+from unzipper import (DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for, error_message,
+                      is_supported)
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
 
@@ -458,7 +459,9 @@ class App(tk.Tk):
                 text = job.message.cget("text")
             except Exception:
                 text = ""
-            if "空き容量" in text:
+            # 表示文言ではなく、案内文の定義そのもので判定する (文言変更で
+            # 回復ボタンが黙って消えないように)。
+            if DISK_FULL_MESSAGE in text:
                 return ("保存先を変更して再試行", "diskfull")
         return None
 

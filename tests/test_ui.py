@@ -12,6 +12,7 @@ import py7zr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app import App, main
+from unzipper import error_message
 
 
 class UITests(unittest.TestCase):
@@ -465,7 +466,8 @@ class UITests(unittest.TestCase):
         self.pump(lambda: self.app.jobs[0].state == 'ready')
         job = self.app.jobs[0]
         job.state = 'failed'
-        job.message.configure(text='解凍に失敗しました: 保存先の空き容量が不足しています。')
+        # 実際の生成元 (error_message) の文言で判定されることを確かめる。
+        job.message.configure(text=error_message(OSError(errno.ENOSPC, 'No space left')))
         self.app._update_buttons()
         self.app.update()
         self.assertTrue(job.action_btn.winfo_manager())
