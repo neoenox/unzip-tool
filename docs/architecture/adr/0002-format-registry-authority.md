@@ -11,9 +11,9 @@ Adding or changing an archive format currently requires edits in `unzipper.SUPPO
 
 `unzipper` owns a frozen `FORMATS` registry: `(kind, filter label, suffixes)`. From it derive:
 
-- `SUPPORTED_SUFFIXES` (order preserved for existing behaviour),
+- `SUPPORTED_SUFFIXES` (derived order is irrelevant: consumers use `endswith` or length sort),
 - `is_supported`, `detect_kind`, `default_dest_for` suffix stripping,
-- `FILTERS` used by the file dialog in `app.py`,
+- `DIALOG_FILTERS` used by the file dialog in `app.py`,
 - the supported-formats line in `ui.HELP_SECTIONS`.
 
 Per-format prose (password support, UnRAR requirement) stays in help copy; only the machine-readable suffix list is generated. `app.FORMAT_BADGE` stays separate: a badge label is not a dialog filter group.

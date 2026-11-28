@@ -15,8 +15,8 @@ from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped
 from jobs import BackgroundTask, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
 from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact, set_update_chip
-from unzipper import (DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for, error_message,
-                      is_supported)
+from unzipper import (DIALOG_FILTERS, DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for,
+                      error_message, is_supported)
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
 
@@ -50,14 +50,6 @@ def short_display_name(name: str, limit: int = 32) -> str:
 TITLE = "かんたん解凍"
 EMPTY_STATUS = "ファイルを選んで、解凍するだけ。"
 UPDATE_INTERVAL = 24 * 60 * 60  # 起動時の自動チェック間隔
-FILTERS = [
-    ("対応アーカイブ", "*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
-    ("ZIP", "*.zip"),
-    ("7Z", "*.7z"),
-    ("RAR", "*.rar"),
-    ("TAR系", "*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
-    ("すべて", "*.*"),
-]
 
 
 @dataclass
@@ -636,7 +628,7 @@ class App(tk.Tk):
         # mutate a different job or a newer password attempt.
 
     def choose_archive(self):
-        paths = filedialog.askopenfilenames(title="解凍するファイルを選ぶ", filetypes=FILTERS)
+        paths = filedialog.askopenfilenames(title="解凍するファイルを選ぶ", filetypes=DIALOG_FILTERS)
         if paths:
             self.on_drop_files(list(paths))
 

@@ -1,6 +1,7 @@
 """Tk layout and visual design; all behavior is supplied by the application."""
 import tkinter as tk
 from tkinter import ttk
+from unzipper import FORMATS
 from version import VERSION
 
 UPDATE_DEFAULT_TEXT = f'ZIP・7z・RAR・TAR  /  v{VERSION}'
@@ -370,7 +371,7 @@ HELP_SECTIONS = (
         ".zip — パスワード対応",
         ".7z — パスワード対応",
         ".rar — RAR4/5、パスワード対応（要UnRAR）",
-        ".tar / .tar.gz / .tgz / .tar.bz2 / .tbz / .tar.xz / .txz",
+        " / ".join(next(fmt for fmt in FORMATS if fmt.kind == "tar").suffixes),
     )),
     ("できないこと", (
         "分割アーカイブ（.part1.rar など）と自己解凍形式（.exe）は開けません。",

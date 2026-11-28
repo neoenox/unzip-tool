@@ -16,7 +16,8 @@
 
 | Round | Commit | Change | Verification | Review | Notes |
 |---|---|---|---|---|---|
-| — | — | baseline docs + ADRs + task pool | full suite green (see above) | — | no code changed |
+| 0 | `f302ab3` | architecture map, ADRs, task pool (no code) | full suite green (baseline) | — | docs-only batch |
+| 1 | `64e8efb` | `unzipper.FORMATS` registry derived suffixes/detection/dialog filters/help line; deleted `app.FILTERS` literal | targeted 101 passed; full suite 185 passed, 1 skipped | Round1Review: one gap — dialog test did not cover picker consumer; fixed in same round (test now asserts `askopenfilenames(filetypes=...)`) | no behaviour change; installer suffix literals remain a separate text-test contract |
 
 ## Conventions for each row
 

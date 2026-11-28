@@ -19,7 +19,27 @@ from typing import Callable, Literal
 
 ArchiveKind = Literal["zip", "tar", "rar", "7z"]
 
-SUPPORTED_SUFFIXES = (".zip", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz", ".rar")
+
+@dataclass(frozen=True)
+class ArchiveFormat:
+    """一形式の kind・ダイアログ名・拡張子を持つ単一情報源。"""
+    kind: ArchiveKind
+    label: str
+    suffixes: tuple[str, ...]
+
+
+FORMATS: tuple[ArchiveFormat, ...] = (
+    ArchiveFormat("zip", "ZIP", (".zip",)),
+    ArchiveFormat("7z", "7Z", (".7z",)),
+    ArchiveFormat("rar", "RAR", (".rar",)),
+    ArchiveFormat("tar", "TAR系", (".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz")),
+)
+SUPPORTED_SUFFIXES = tuple(suffix for fmt in FORMATS for suffix in fmt.suffixes)
+DIALOG_FILTERS = (
+    [("対応アーカイブ", " ".join("*" + s for s in SUPPORTED_SUFFIXES))]
+    + [(fmt.label, " ".join("*" + s for s in fmt.suffixes)) for fmt in FORMATS]
+    + [("すべて", "*.*")]
+)
 
 RAR_TOOL_HELP = (
     "RARの展開には別途 UnRAR が必要です。"
@@ -35,14 +55,9 @@ def is_supported(path: str | os.PathLike) -> bool:
 
 def detect_kind(path: str | os.PathLike) -> ArchiveKind:
     name = str(path).lower()
-    if name.endswith(".zip"):
-        return "zip"
-    if name.endswith(".rar"):
-        return "rar"
-    if name.endswith(".7z"):
-        return "7z"
-    if name.endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz")):
-        return "tar"
+    for fmt in FORMATS:
+        if name.endswith(fmt.suffixes):
+            return fmt.kind
     raise ValueError(f"未対応の形式です: {path}")
 
 

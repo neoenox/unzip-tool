@@ -63,13 +63,13 @@ No import cycles today. Two *semantic* cycles to keep under control: `ui ↔ App
 
 | Concept | Authority | Other copies | Status |
 |---|---|---|---|
-| Format suffixes & kind | `unzipper.SUPPORTED_SUFFIXES` + `detect_kind` | `app.FILTERS`, `ui.HELP_SECTIONS`, `unzipper.default_dest_for` stripping, installer ISS | Round 1 consolidates Python side; installer literal lines are constrained by text tests |
+| Format suffixes & kind | `unzipper.FORMATS` (+ derived `SUPPORTED_SUFFIXES`, `DIALOG_FILTERS`) | `ui.HELP_SECTIONS`, `unzipper.default_dest_for` stripping, installer ISS | Round 1 consolidated Python side; installer literal lines are constrained by text tests |
 | User-facing domain messages | `unzipper.DISK_FULL_MESSAGE` (already single-sourced) | password/link message literals repeated 4–5× in `unzipper.py` | Round 2 |
 | Terminal worker events | `jobs._work` emitter | `app._poll_events` gate, `test_jobs.py`, `test_frozen_rar.py` | Round 3 |
 | Version | `version.py` | 3 PowerShell regex parsers, README examples | Later batch; README literals are test-pinned |
 | Geometry limits | `settings.MIN_WIDTH/MIN_HEIGHT` | `app.minsize(700,680)`, PowerShell QA regex | Deferred: aligning changes visible behavior |
 | Status colours | `app.STATE_BADGE` (job state) vs `ui.UPDATE_CHIP_STYLES` (update phase) | — | Intentional: different concepts, do not merge |
-| Format badge vs filter labels | `app.FORMAT_BADGE` vs `app.FILTERS` | — | Intentional: badge is short UI label, filter is dialog group |
+| Format badge vs filter labels | `app.FORMAT_BADGE` vs `unzipper.DIALOG_FILTERS` | — | Intentional: badge is short UI label, filter is dialog group |
 
 ## Technology doubles (all have real callers)
 
