@@ -69,6 +69,7 @@ No import cycles today. Two *semantic* cycles to keep under control: `ui ↔ App
 | Version | `version.py` + `scripts/get-version.ps1` (only PowerShell parser) | README examples (text-test pinned), Python imports | Round 4 removed three duplicate parsers; no hardcoded version in scripts |
 | Geometry limits | `settings.MIN_WIDTH/MIN_HEIGHT` | `app.minsize(700,680)`, PowerShell QA regex | Deferred: aligning changes visible behavior |
 | Status colours | `app.STATE_BADGE` (job state) vs `ui.UPDATE_CHIP_STYLES` (update phase) | — | Intentional: different concepts, do not merge |
+| Design tokens | `ui.py` palette + `ui.font()` | A few badge/ink colours with no token (distinct concepts, kept literal) | Round 6 migrated app.py; no colour or font value changed |
 | Format badge vs filter labels | `app.FORMAT_BADGE` vs `unzipper.DIALOG_FILTERS` | — | Intentional: badge is short UI label, filter is dialog group |
 
 ## Technology doubles (all have real callers)

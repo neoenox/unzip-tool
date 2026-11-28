@@ -10,6 +10,7 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 | A3 | Share terminal-event set between `jobs.py` and `app.py` | One worker protocol definition | Low: same set, no protocol change | done — round 3; all five consumers migrated, unknown-event guard added |
 | A4 | Replace 3 PowerShell version regex parsers with one helper | `version.py` is parsed in one shared PowerShell helper | Low with PS-only helper: release-QA hosts need no Python | done — round 4; `scripts/get-version.ps1` is the sole parser, contract test migrated |
 | A5 | Delete test-only `_check_names_safe` adapter | Tests call `_safe_join` directly | Low: wrapper only looped over `_safe_join` | done — round 5; no production caller existed, behavior-preserving |
+| A6 | Use `ui` design tokens for app palette/font literals | One palette and one font helper | Low: exact value substitution only | done — round 6; 20 app sites migrated, distinct badge colours left as literals |
 | D1 | Unified cancellation contract for both worker types | Shared worker lifecycle | High: behaviour change | deferred — product decision required |
 | D2 | One geometry validator for Python + PowerShell | One minimum-window rule | High: visible resize behaviour | deferred — product decision required |
 | D3 | Split `App` domain state from widget state | Stable job-state API | High: ~1,350-line migration | deferred — dedicated round after A1–A3 |
@@ -19,4 +20,4 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 
 ## Done
 
-round 1 (format registry), round 2 (domain messages), round 3 (worker protocol), round 4 (PowerShell version reader), round 5 (test-only adapter deletion); see `progress.md`
+round 1 (format registry), round 2 (domain messages), round 3 (worker protocol), round 4 (PowerShell version reader), round 5 (test-only adapter deletion), round 6 (design tokens); see `progress.md`
