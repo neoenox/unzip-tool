@@ -67,6 +67,7 @@ No import cycles today. Two *semantic* cycles to keep under control: `ui ↔ App
 | User-facing domain messages | `unzipper.py` named constants (`DISK_FULL_MESSAGE`, `PASSWORD_*`, `LINK_UNSUPPORTED_MESSAGE`, `DANGEROUS_PATH_MESSAGE`) | RAR-only link wording (single use, semantically distinct) | Round 2 consolidated all repeated literals; wording unchanged |
 | Terminal worker events | `jobs.TERMINAL_EVENTS` + `jobs.UNEXPECTED_EXIT_MESSAGE` | update-specific `('done','error')` gate in `app._finish_check` (different protocol) | Round 3 consolidated all five terminal consumers; behaviour unchanged |
 | Version | `version.py` + `scripts/get-version.ps1` (only PowerShell parser) | README examples (text-test pinned), Python imports | Round 4 removed three duplicate parsers; no hardcoded version in scripts |
+| Update validation messages | `updates.INVALID_VERIFICATION_MESSAGE` / `INVALID_SIZE_MESSAGE` | Other distinct failure messages (different meanings) | Round 7 consolidated only byte-identical wording; substrings asserted by tests unchanged |
 | Geometry limits | `settings.MIN_WIDTH/MIN_HEIGHT` | `app.minsize(700,680)`, PowerShell QA regex | Deferred: aligning changes visible behavior |
 | Status colours | `app.STATE_BADGE` (job state) vs `ui.UPDATE_CHIP_STYLES` (update phase) | — | Intentional: different concepts, do not merge |
 | Design tokens | `ui.py` palette + `ui.font()` | A few badge/ink colours with no token (distinct concepts, kept literal) | Round 6 migrated app.py; no colour or font value changed |
