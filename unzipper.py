@@ -174,6 +174,18 @@ class PasswordRequiredError(ValueError):
 # 文字列はここだけで定義し、表示側と判定側で食い違わないようにする。
 DISK_FULL_MESSAGE = ('保存先の空き容量が不足しています。'
                      '空き容量を増やすか、別の保存先を選んで再試行してください。')
+PASSWORD_REQUIRED_MESSAGE = "パスワードを入力してください。"
+PASSWORD_WRONG_MESSAGE = "パスワードが必要か、間違っています。入力して再試行してください。"
+PASSWORD_OR_CORRUPT_MESSAGE = "パスワードが違うか、書庫が壊れています。入力して再試行してください。"
+PASSWORD_CORRUPT_MESSAGE = "パスワードが違うか、書庫が壊れています。"
+PASSWORD_MESSAGES = (
+    PASSWORD_REQUIRED_MESSAGE,
+    PASSWORD_WRONG_MESSAGE,
+    PASSWORD_OR_CORRUPT_MESSAGE,
+    PASSWORD_CORRUPT_MESSAGE,
+)
+LINK_UNSUPPORTED_MESSAGE = "リンクや特殊ファイルを含む書庫は解凍できません。"
+DANGEROUS_PATH_MESSAGE = "危険なパスです: {name}"
 
 
 def error_message(error: Exception) -> str:
@@ -215,7 +227,7 @@ def _password_text(password: bytes | None) -> str | None:
 def _safe_join(base: Path, *parts: str) -> Path:
     name = "/".join(parts).replace("\\", "/")
     if name.startswith("/") or ":" in name:
-        raise ValueError(f"危険なパスです: {name}")
+        raise ValueError(DANGEROUS_PATH_MESSAGE.format(name=name))
     segments = name.split("/")
     reserved = {"con", "prn", "aux", "nul", "conin$", "conout$"}
     reserved.update(f"{prefix}{i}" for prefix in ("com", "lpt") for i in "123456789¹²³")
@@ -229,7 +241,7 @@ def _safe_join(base: Path, *parts: str) -> Path:
     target = base.joinpath(*[x for x in segments if x not in ("", ".")]).resolve()
     root = base.resolve()
     if target != root and root not in target.parents:
-        raise ValueError(f"危険なパスです: {name}")
+        raise ValueError(DANGEROUS_PATH_MESSAGE.format(name=name))
     return target
 
 
@@ -261,16 +273,16 @@ def list_contents(archive: str | os.PathLike, password: bytes | None = None) -> 
                     rf.setpassword(_password_text(password))
                 return [Entry(i.filename, i.file_size, i.is_dir()) for i in rf.infolist()]
         except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
-            raise PasswordRequiredError("パスワードを入力してください。") from e
+            raise PasswordRequiredError(PASSWORD_REQUIRED_MESSAGE) from e
     import py7zr
     try:
         with py7zr.SevenZipFile(archive, password=_password_text(password)) as sf:
             return [Entry(i.filename, i.uncompressed or 0, i.is_directory) for i in sf.list()]
     except py7zr.exceptions.PasswordRequired as e:
-        raise PasswordRequiredError("パスワードを入力してください。") from e
+        raise PasswordRequiredError(PASSWORD_REQUIRED_MESSAGE) from e
     except (py7zr.exceptions.Bad7zFile, TypeError, ValueError, EOFError, lzma.LZMAError) as e:
         if password and archive_needs_password(archive):
-            raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。入力して再試行してください。") from e
+            raise PasswordRequiredError(PASSWORD_OR_CORRUPT_MESSAGE) from e
         raise
 
 
@@ -336,7 +348,7 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
     _validate_entries(dest, entries)
     if not entries and not password and _archive_needs_password_quiet(archive):
         # ヘッダ暗号化RAR等: 一覧が空でもPW要求ありなら空フォルダを作らず促す
-        raise PasswordRequiredError("パスワードを入力してください。")
+        raise PasswordRequiredError(PASSWORD_REQUIRED_MESSAGE)
     total_bytes = sum(entry.size for entry in entries if not entry.is_dir)
     copied = 0
     class ProgressReader:
@@ -366,18 +378,18 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
         with zipfile.ZipFile(archive) as zf:
             infos = zf.infolist()
             if any(stat.S_IFMT(i.external_attr >> 16) not in (0, stat.S_IFREG, stat.S_IFDIR) for i in infos):
-                raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
+                raise ValueError(LINK_UNSUPPORTED_MESSAGE)
             try:
                 copy_members(infos, lambda i: zf.open(i, pwd=password))
             except RuntimeError as e:
                 if _password_error(e):
-                    raise PasswordRequiredError("パスワードが必要か、間違っています。入力して再試行してください。") from e
+                    raise PasswordRequiredError(PASSWORD_WRONG_MESSAGE) from e
                 raise
     elif kind == "tar":
         with tarfile.open(archive, "r:*") as tf:
             members = tf.getmembers()
             if any(not (m.isdir() or m.isfile()) for m in members):
-                raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
+                raise ValueError(LINK_UNSUPPORTED_MESSAGE)
             copy_members(members, tf.extractfile)
     elif kind == "rar":
         import rarfile
@@ -391,19 +403,19 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
                     raise ValueError("リンクを含む書庫は解凍できません。")
                 copy_members(members, lambda i: rf.open(i, pwd=_password_text(password)))
         except (rarfile.PasswordRequired, rarfile.RarWrongPassword) as e:
-            raise PasswordRequiredError("パスワードが必要か、間違っています。入力して再試行してください。") from e
+            raise PasswordRequiredError(PASSWORD_WRONG_MESSAGE) from e
         except (rarfile.BadRarFile, rarfile.RarCRCError) as e:
             # 誤PWでは復号結果が壊れてCRC/読み切り失敗になる。PW付きで
             # 暗号書庫なら「違うか壊れている」に寄せ、素の破損はそのまま。
             if password and _archive_needs_password_quiet(archive):
-                raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。入力して再試行してください。") from e
+                raise PasswordRequiredError(PASSWORD_OR_CORRUPT_MESSAGE) from e
             raise
     else:
         import py7zr
         try:
             with py7zr.SevenZipFile(archive, password=_password_text(password)) as sf:
                 if any(not (i.is_directory or i.is_file) or i.is_symlink or i.is_junction for i in sf.files):
-                    raise ValueError("リンクや特殊ファイルを含む書庫は解凍できません。")
+                    raise ValueError(LINK_UNSUPPORTED_MESSAGE)
                 if on_file:
                     for info in sf.files:
                         if not info.is_directory:
@@ -419,14 +431,14 @@ def _extract_into(archive: str | os.PathLike, dest: Path,
                 if on_progress:
                     on_progress(len(entries), len(entries))
         except py7zr.exceptions.PasswordRequired as e:
-            raise PasswordRequiredError("パスワードを入力してください。") from e
+            raise PasswordRequiredError(PASSWORD_REQUIRED_MESSAGE) from e
         except (py7zr.exceptions.CrcError, EOFError) as e:
             if password and archive_needs_password(archive):
-                raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。") from e
+                raise PasswordRequiredError(PASSWORD_CORRUPT_MESSAGE) from e
             raise
         except Exception as e:
             if isinstance(e, lzma.LZMAError) and password:
-                raise PasswordRequiredError("パスワードが違うか、書庫が壊れています。") from e
+                raise PasswordRequiredError(PASSWORD_CORRUPT_MESSAGE) from e
             raise
 
 

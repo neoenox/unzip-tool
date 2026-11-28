@@ -64,7 +64,7 @@ No import cycles today. Two *semantic* cycles to keep under control: `ui ↔ App
 | Concept | Authority | Other copies | Status |
 |---|---|---|---|
 | Format suffixes & kind | `unzipper.FORMATS` (+ derived `SUPPORTED_SUFFIXES`, `DIALOG_FILTERS`) | `ui.HELP_SECTIONS`, `unzipper.default_dest_for` stripping, installer ISS | Round 1 consolidated Python side; installer literal lines are constrained by text tests |
-| User-facing domain messages | `unzipper.DISK_FULL_MESSAGE` (already single-sourced) | password/link message literals repeated 4–5× in `unzipper.py` | Round 2 |
+| User-facing domain messages | `unzipper.py` named constants (`DISK_FULL_MESSAGE`, `PASSWORD_*`, `LINK_UNSUPPORTED_MESSAGE`, `DANGEROUS_PATH_MESSAGE`) | RAR-only link wording (single use, semantically distinct) | Round 2 consolidated all repeated literals; wording unchanged |
 | Terminal worker events | `jobs._work` emitter | `app._poll_events` gate, `test_jobs.py`, `test_frozen_rar.py` | Round 3 |
 | Version | `version.py` | 3 PowerShell regex parsers, README examples | Later batch; README literals are test-pinned |
 | Geometry limits | `settings.MIN_WIDTH/MIN_HEIGHT` | `app.minsize(700,680)`, PowerShell QA regex | Deferred: aligning changes visible behavior |

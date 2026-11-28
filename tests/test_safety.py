@@ -14,7 +14,8 @@ from unittest.mock import patch
 import rarfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from unzipper import PasswordRequiredError, clean_staging, default_dest_for, extract_archive, error_message
+from unzipper import (LINK_UNSUPPORTED_MESSAGE, PasswordRequiredError, clean_staging,
+                      default_dest_for, extract_archive, error_message)
 
 
 class SafetyTests(unittest.TestCase):
@@ -118,8 +119,9 @@ class SafetyTests(unittest.TestCase):
             link.type = tarfile.SYMTYPE
             link.linkname = '../outside'
             tf.addfile(link)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as caught:
             extract_archive(src, self.base / 'out')
+        self.assertEqual(str(caught.exception), LINK_UNSUPPORTED_MESSAGE)
         self.assertFalse((self.base / 'out').exists())
 
     def test_zip_link_rejected(self):
@@ -129,8 +131,9 @@ class SafetyTests(unittest.TestCase):
             info.create_system = 3
             info.external_attr = (stat.S_IFLNK | 0o777) << 16
             z.writestr(info, '../escape')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as caught:
             extract_archive(src, self.base / 'out')
+        self.assertEqual(str(caught.exception), LINK_UNSUPPORTED_MESSAGE)
         self.assertFalse((self.base / 'out').exists())
 
     def test_readonly_staging_is_cleaned(self):

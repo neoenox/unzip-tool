@@ -18,6 +18,7 @@
 |---|---|---|---|---|---|
 | 0 | `f302ab3` | architecture map, ADRs, task pool (no code) | full suite green (baseline) | — | docs-only batch |
 | 1 | `64e8efb` | `unzipper.FORMATS` registry derived suffixes/detection/dialog filters/help line; deleted `app.FILTERS` literal | targeted 101 passed; full suite 185 passed, 1 skipped | Round1Review: one gap — dialog test did not cover picker consumer; fixed in same round (test now asserts `askopenfilenames(filetypes=...)`) | no behaviour change; installer suffix literals remain a separate text-test contract |
+| 2 | — | named password/link/dangerous-path messages in `unzipper.py`; every repeated literal now uses a constant | targeted 45 passed; full suite 185 passed, 1 skipped | Round2Review: approve (all 15 sites byte-identical to HEAD) | distinct wording variants kept distinct; RAR-only link message intentionally left single-use |
 
 ## Conventions for each row
 

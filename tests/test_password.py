@@ -15,7 +15,8 @@ import py7zr
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import test_e2e  # noqa: E402
-from unzipper import PasswordRequiredError, archive_needs_password, extract_archive, list_contents  # noqa: E402
+from unzipper import (PASSWORD_MESSAGES, PasswordRequiredError, archive_needs_password,  # noqa: E402
+                      extract_archive, list_contents)
 
 VENDOR = Path(__file__).resolve().parent / "vendor"
 ZIP_PW = VENDOR / "pw.zip"
@@ -24,18 +25,22 @@ RAR_PW = VENDOR / "pw.rar"
 RAR_PW_TEXT = "hello rar pw"
 
 
+def _expect_password_error(fn, label: str) -> None:
+    try:
+        fn()
+    except PasswordRequiredError as error:
+        assert str(error) in PASSWORD_MESSAGES, f'{label}: 想定外の文言 {error}'
+    else:
+        raise AssertionError(f'expected PasswordRequiredError ({label})')
+
+
 def test_zip_password_flow() -> None:
     assert [e.name for e in list_contents(ZIP_PW)] == ["hello.txt"]  # 一覧はPW不要
     assert archive_needs_password(ZIP_PW) is True
     for pwd in (None, "bad".encode()):
         for fn in (lambda d: extract_archive(ZIP_PW, d),
                    lambda d: extract_archive(ZIP_PW, d, password=pwd)):
-            try:
-                fn(Path(tempfile.mkdtemp()))
-            except PasswordRequiredError:
-                pass
-            else:
-                raise AssertionError(f"expected PasswordRequiredError (pwd={pwd})")
+            _expect_password_error(lambda fn=fn: fn(Path(tempfile.mkdtemp())), f'zip pwd={pwd}')
     dest = Path(tempfile.mkdtemp()) / "ok"
     extract_archive(ZIP_PW, dest, password="testpw".encode())
     assert (dest / "hello.txt").read_text() == ZIP_PW_TEXT
@@ -45,12 +50,8 @@ def test_rar_password_flow() -> None:
     assert [e.name for e in list_contents(RAR_PW)] == ["hello.txt"]
     assert archive_needs_password(RAR_PW) is True
     for pwd in (None, "bad".encode()):
-        try:
-            extract_archive(RAR_PW, Path(tempfile.mkdtemp()), password=pwd)
-        except PasswordRequiredError:
-            pass
-        else:
-            raise AssertionError(f"expected PasswordRequiredError (pwd={pwd})")
+        _expect_password_error(lambda pwd=pwd: extract_archive(
+            RAR_PW, Path(tempfile.mkdtemp()), password=pwd), f'rar pwd={pwd}')
     result = extract_archive(RAR_PW, Path(tempfile.mkdtemp()) / "ok",
                              password="testpw".encode())
     assert (result / "hello.txt").read_text() == RAR_PW_TEXT
@@ -65,18 +66,9 @@ def test_7z_password_flow() -> None:
     with py7zr.SevenZipFile(zpath, "w", password="s3cret") as a:
         a.writeall(src, ".")
     assert archive_needs_password(zpath) is True
-    try:
-        extract_archive(zpath, tmp / "nope")
-    except PasswordRequiredError:
-        pass
-    else:
-        raise AssertionError("expected PasswordRequiredError without password")
-    try:
-        extract_archive(zpath, tmp / "bad", password="wrong".encode())
-    except PasswordRequiredError:
-        pass
-    else:
-        raise AssertionError("expected PasswordRequiredError with wrong password")
+    _expect_password_error(lambda: extract_archive(zpath, tmp / "nope"), '7z no password')
+    _expect_password_error(lambda: extract_archive(
+        zpath, tmp / "bad", password="wrong".encode()), '7z wrong password')
     dest = tmp / "ok"
     extract_archive(zpath, dest, password="s3cret".encode())
     assert (dest / "a.txt").read_text(encoding="utf-8") == "secret data"

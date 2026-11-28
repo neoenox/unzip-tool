@@ -5,8 +5,8 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 
 | ID | Task | Authority gained | Risk | Status / acceptance |
 |---|---|---|---|---|
-| A1 | `unzipper.FORMATS` registry; derive suffixes, detection, dest stripping, dialog filters, help line | One place to add a format | Low: pure derivation, existing callback contracts unchanged | ready — all format tests + new registry contract test green; no stale literals left in Python |
-| A2 | Name the repeated domain messages in `unzipper.py` | One authority per message concept | Low: strings unchanged at every site | ready — all sites use constants; tests asserting substrings unchanged |
+| A1 | `unzipper.FORMATS` registry; derive suffixes, detection, dest stripping, dialog filters, help line | One place to add a format | Low: pure derivation, existing callback contracts unchanged | done — round 1; dialog consumer covered by a behavioral test |
+| A2 | Name the repeated domain messages in `unzipper.py` | One authority per message concept | Low: strings unchanged at every site | done — round 2; 15 sites migrated, canonical message set asserted in tests |
 | A3 | Share terminal-event set between `jobs.py` and `app.py` | One worker protocol definition | Low: same set, no protocol change | candidate — verify no consumer treats a different subset as terminal |
 | A4 | Replace 3 PowerShell version regex parsers with one helper | `version.py` is read, not re-parsed | Medium: release-QA host assumptions | candidate — see D5; keep version-consistency test green |
 | A5 | Delete test-only `_check_names_safe` adapter | Tests call `_validate_entries` directly | Low: no production caller | candidate — only worthwhile if it removes real indirection, not just lines |
@@ -19,4 +19,4 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 
 ## Done
 
-(no rounds completed yet; see `progress.md`)
+round 1 (format registry), round 2 (domain messages); see `progress.md`
