@@ -12,29 +12,31 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
-from jobs import BackgroundTask, ThreadTask
+from jobs import BackgroundTask, TERMINAL_EVENTS, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
-from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact, set_update_chip
-from unzipper import (DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for, error_message,
-                      is_supported)
+from ui import (BG, BORDER, DANGER, MUTED, PRIMARY, PRIMARY_DARK, SUBTLE, SURFACE,
+                SUCCESS, UPDATE_DEFAULT_TEXT, WARNING, Tooltip, build_help_window,
+                build_widgets, font, paint_drop_area, set_drop_compact, set_update_chip)
+from unzipper import (DIALOG_FILTERS, DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for,
+                      error_message, is_supported)
 from unzipper import detect_kind as _detect_kind
 from version import VERSION
 
 STATE_BADGE = {
     "scanning": ("確認中", "#475569", "#f1f5f9"),
-    "ready": ("解凍できます", "#15803d", "#dcfce7"),
-    "password": ("PW必要", "#b45309", "#fef3c7"),
-    "extracting": ("解凍中…", "#1d4ed8", "#dbeafe"),
-    "done": ("完了", "#15803d", "#dcfce7"),
-    "failed": ("失敗", "#b91c1c", "#fee2e2"),
+    "ready": ("解凍できます", SUCCESS, "#dcfce7"),
+    "password": ("PW必要", WARNING, "#fef3c7"),
+    "extracting": ("解凍中…", PRIMARY_DARK, "#dbeafe"),
+    "done": ("完了", SUCCESS, "#dcfce7"),
+    "failed": ("失敗", DANGER, "#fee2e2"),
     "cancelled": ("中断", "#475569", "#f1f5f9"),
 }
 
 FORMAT_BADGE = {
-    "zip": ("ZIP", "#ffffff", "#2563eb"),
-    "7z": ("7z", "#ffffff", "#7c3aed"),
-    "rar": ("RAR", "#ffffff", "#c2410c"),
-    "tar": ("TAR", "#ffffff", "#0f766e"),
+    "zip": ("ZIP", SURFACE, PRIMARY),
+    "7z": ("7z", SURFACE, "#7c3aed"),
+    "rar": ("RAR", SURFACE, "#c2410c"),
+    "tar": ("TAR", SURFACE, "#0f766e"),
 }
 
 
@@ -50,14 +52,6 @@ def short_display_name(name: str, limit: int = 32) -> str:
 TITLE = "かんたん解凍"
 EMPTY_STATUS = "ファイルを選んで、解凍するだけ。"
 UPDATE_INTERVAL = 24 * 60 * 60  # 起動時の自動チェック間隔
-FILTERS = [
-    ("対応アーカイブ", "*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
-    ("ZIP", "*.zip"),
-    ("7Z", "*.7z"),
-    ("RAR", "*.rar"),
-    ("TAR系", "*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz *.tar.xz *.txz"),
-    ("すべて", "*.*"),
-]
 
 
 @dataclass
@@ -130,7 +124,7 @@ class App(tk.Tk):
         self.title(TITLE)
         self.geometry("780x760")
         self.minsize(700, 680)
-        self.configure(bg="#f4f6f8")
+        self.configure(bg=BG)
         self._set_window_icon()
         self.jobs: list[ArchiveJob] = []
         self.selected = None
@@ -325,11 +319,11 @@ class App(tk.Tk):
         self.select_job(self.jobs[(idx + delta) % len(self.jobs)])
 
     def _new_card(self, job):
-        job.card = tk.Frame(self.card_list, bg="#ffffff", highlightbackground="#dce4ef",
+        job.card = tk.Frame(self.card_list, bg=SURFACE, highlightbackground=BORDER,
                             highlightthickness=1, bd=0)
         job.card.pack(fill="x", pady=(0, 10))
         job.card.configure(cursor="hand2")
-        job.accent = tk.Frame(job.card, bg="#2563eb", width=4)
+        job.accent = tk.Frame(job.card, bg=PRIMARY, width=4)
         job.accent.pack(side="left", fill="y")
         inner = ttk.Frame(job.card, style="CardInner.TFrame", padding=(14, 12))
         inner.pack(side="left", fill="both", expand=True)
@@ -340,9 +334,9 @@ class App(tk.Tk):
             fmt = _detect_kind(job.archive)
         except ValueError:
             fmt = "zip"
-        fmt_text, fmt_fg, fmt_bg = FORMAT_BADGE.get(fmt, (fmt.upper(), "#ffffff", "#64748b"))
+        fmt_text, fmt_fg, fmt_bg = FORMAT_BADGE.get(fmt, (fmt.upper(), SURFACE, SUBTLE))
         job.fmt_badge = tk.Label(row, text=fmt_text, fg=fmt_fg, bg=fmt_bg,
-                                 font=("Yu Gothic UI", 9, "bold"), padx=7, pady=3)
+                                 font=font(9, "bold"), padx=7, pady=3)
         job.fmt_badge.pack(side="left")
         name = job.archive.name
         short_name = short_display_name(name)
@@ -353,13 +347,13 @@ class App(tk.Tk):
         job.remove_btn = ttk.Button(row, text="×", width=3, style="Quiet.TButton",
                                     command=lambda: self.remove_job(job))
         job.remove_btn.pack(side="right")
-        job.state_badge = tk.Label(row, text="確認中", fg="#64748b", bg="#f1f5f9",
-                                   font=("Yu Gothic UI", 9, "bold"), padx=7, pady=3)
+        job.state_badge = tk.Label(row, text="確認中", fg=SUBTLE, bg="#f1f5f9",
+                                   font=font(9, "bold"), padx=7, pady=3)
         job.state_badge.pack(side="right", padx=(0, 6))
         Tooltip(job.remove_btn, lambda: "この書庫を一覧から外します（ファイル自体は削除しません）")
 
         job.summary = ttk.Label(inner, text="内容を確認しています…", style="CardMuted.TLabel",
-                                font=("Yu Gothic UI", 10, "bold"))
+                                font=font(10, "bold"))
         job.summary.pack(anchor="w", pady=(10, 3))
         job.message = ttk.Label(inner, text="確認中", style="Card.TLabel",
                                 wraplength=max(280, self.winfo_width() - 120))
@@ -367,7 +361,7 @@ class App(tk.Tk):
         job.dest_row = ttk.Frame(inner, style="CardInner.TFrame")
         job.dest_row.pack(fill="x", pady=(7, 0))
         job.dest_label = ttk.Label(job.dest_row, text="", style="CardMuted.TLabel",
-                                   font=("Yu Gothic UI", 9))
+                                   font=font(9))
         job.dest_label.pack(side="left", fill="x", expand=True)
         Tooltip(job.dest_label, lambda j=job: f"保存先: {j.result or j.dest}")
         job.dest_btn = ttk.Button(job.dest_row, text="変更", width=6, style="Quiet.TButton",
@@ -416,14 +410,14 @@ class App(tk.Tk):
 
     def _sync_card_chrome(self, job):
         """状態バッジ・再試行/削除ボタン・保存先表示を状態に合わせる。"""
-        text, fg, bg = STATE_BADGE.get(job.state, ("", "#243447", "#f4f6f8"))
+        text, fg, bg = STATE_BADGE.get(job.state, ("", "#243447", BG))
         try:
             job.state_badge.configure(text=text, foreground=fg, background=bg)
-            accent = ("#2563eb", 2) if self.selected is job else {
+            accent = (PRIMARY, 2) if self.selected is job else {
                 "failed": ("#fca5a5", 1, "#dc2626"),
                 "password": ("#fcd34d", 1, "#d97706"),
                 "done": ("#86efac", 1, "#16a34a"),
-            }.get(job.state, ("#dce4ef", 1, "#2563eb"))
+            }.get(job.state, (BORDER, 1, PRIMARY))
             job.card.configure(highlightbackground=accent[0], highlightthickness=accent[1])
             job.accent.configure(bg=accent[2] if len(accent) > 2 else accent[0])
         except Exception:
@@ -636,7 +630,7 @@ class App(tk.Tk):
         # mutate a different job or a newer password attempt.
 
     def choose_archive(self):
-        paths = filedialog.askopenfilenames(title="解凍するファイルを選ぶ", filetypes=FILTERS)
+        paths = filedialog.askopenfilenames(title="解凍するファイルを選ぶ", filetypes=DIALOG_FILTERS)
         if paths:
             self.on_drop_files(list(paths))
 
@@ -821,7 +815,7 @@ class App(tk.Tk):
             active = 2
         try:
             for i, lbl in enumerate(self.step_labels):
-                lbl.configure(foreground="#1d4ed8" if i == active else "#526276")
+                lbl.configure(foreground=PRIMARY_DARK if i == active else MUTED)
             self.step_labels[1].configure(text=label2)
         except Exception:
             pass
@@ -1064,7 +1058,7 @@ class App(tk.Tk):
                         job.message.configure(text=f"{'入力して再試行してください' if kind == 'password' else '解凍に失敗しました'}: {payload}")
                         if kind == "password" and job.password:
                             try:
-                                job.pw_entry.configure(foreground="#b91c1c")
+                                job.pw_entry.configure(foreground=DANGER)
                             except Exception:
                                 pass
                     self._sync_card_chrome(job)
@@ -1229,7 +1223,7 @@ class App(tk.Tk):
         if self._listing:
             task, job, revision = self._listing
             for kind, payload in task.poll():
-                if kind not in ("done", "error", "password"):
+                if kind not in TERMINAL_EVENTS:
                     continue
                 self._listing = None
                 if revision != job.revision or job.state == "done":
@@ -1247,7 +1241,7 @@ class App(tk.Tk):
                     if job.state == "password" and job.password:
                         # 入力済みでまだPW要求＝誤り。赤字で知らせる (#38)
                         try:
-                            job.pw_entry.configure(foreground="#b91c1c")
+                            job.pw_entry.configure(foreground=DANGER)
                         except Exception:
                             pass
                     self._sync_card_pw_row(job)

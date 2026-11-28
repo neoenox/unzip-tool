@@ -11,7 +11,8 @@ from unittest.mock import patch
 from urllib.error import URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from updates import check_latest, _installer_asset, download_update  # noqa: E402
+from updates import (INVALID_SIZE_MESSAGE, INVALID_VERIFICATION_MESSAGE,  # noqa: E402
+                     _installer_asset, check_latest, download_update)
 
 
 class UpdateTests(unittest.TestCase):
@@ -97,6 +98,17 @@ class UpdateTests(unittest.TestCase):
         bad = dict(release['assets'][0], digest='sha256:bad')
         with self.assertRaisesRegex(ValueError, '検証情報'):
             _installer_asset({**release, 'assets': [bad]}, 'v1.10.0')
+
+    def test_update_validation_messages_use_shared_constants(self):
+        release = json.loads(self.release_with_asset()[0].getvalue())
+        bad = dict(release['assets'][0], digest='sha256:bad')
+        with self.assertRaises(ValueError) as caught:
+            _installer_asset({**release, 'assets': [bad]}, 'v1.10.0')
+        self.assertEqual(str(caught.exception), INVALID_VERIFICATION_MESSAGE)
+        bad = dict(release['assets'][0], size=-1)
+        with self.assertRaises(ValueError) as caught:
+            _installer_asset({**release, 'assets': [bad]}, 'v1.10.0')
+        self.assertEqual(str(caught.exception), INVALID_SIZE_MESSAGE)
 
     def test_download_update_verifies_digest_and_progress(self):
         body, payload = self.release_with_asset()

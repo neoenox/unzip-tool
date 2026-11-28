@@ -38,11 +38,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $Version) {
-    # 版数の出所は version.py の1行だけ。直書きするとリリース時に取り残される。
-    $versionFile = Join-Path $projectRoot 'version.py'
-    $match = [regex]::Match((Get-Content -LiteralPath $versionFile -Raw), "VERSION\s*=\s*'([^']+)'")
-    if (-not $match.Success) { throw "Could not read VERSION from $versionFile." }
-    $Version = $match.Groups[1].Value
+    $Version = & (Join-Path $PSScriptRoot 'get-version.ps1')
 }
 if (-not $Tag) { $Tag = "v$Version" }
 if (-not $WorkDir) { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) ('kantan-verify-' + [guid]::NewGuid().ToString('N')) }

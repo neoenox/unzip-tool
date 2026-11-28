@@ -794,6 +794,18 @@ class UITests(unittest.TestCase):
         for suffix in SUPPORTED_SUFFIXES:
             self.assertIn(suffix, text, f'{suffix} がヘルプに無い')
 
+    def test_dialog_filters_match_format_registry(self):
+        from unzipper import DIALOG_FILTERS, FORMATS
+        groups = dict(DIALOG_FILTERS)
+        registered = [s for fmt in FORMATS for s in fmt.suffixes]
+        self.assertEqual(groups['対応アーカイブ'].split(), ['*' + s for s in registered])
+        for fmt in FORMATS:
+            self.assertEqual(groups[fmt.label].split(), ['*' + s for s in fmt.suffixes])
+        self.assertEqual(DIALOG_FILTERS[-1], ('すべて', '*.*'))
+        with patch('app.filedialog.askopenfilenames', return_value=()) as picker:
+            self.app.choose_archive()
+        self.assertEqual(picker.call_args.kwargs['filetypes'], DIALOG_FILTERS)
+
     def test_help_shortcuts_open_and_close_one_window(self):
         self.assertIsNone(self.app.help_window)
         self.assertEqual(self.key('F1'), 'break')

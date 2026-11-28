@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import jobs
-from jobs import BackgroundTask, ThreadTask
+from jobs import BackgroundTask, TERMINAL_EVENTS, ThreadTask
 
 
 class JobTests(unittest.TestCase):
@@ -29,10 +29,27 @@ class JobTests(unittest.TestCase):
         while time.monotonic() < deadline:
             events = task.poll()
             for kind, payload in events:
-                if kind in ('done', 'error', 'password'):
+                if kind in TERMINAL_EVENTS:
                     return kind, payload
             time.sleep(.02)
         self.fail('worker timeout')
+
+    def test_unknown_event_does_not_terminate_worker(self):
+        def noisy_work(connection, *args):
+            connection.send(('noise', 1))
+            connection.send(('done', None))
+            connection.close()
+        with (mock.patch.object(jobs, '_work', noisy_work),
+              mock.patch.object(jobs, '_publish', wraps=jobs._publish) as publish):
+            task = ThreadTask('list', self.archive)
+            self.addCleanup(task.cancel)
+            events = []
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and not any(k in TERMINAL_EVENTS for k, _ in events):
+                events.extend(task.poll())
+                time.sleep(.01)
+        self.assertEqual([kind for kind, _ in events], ['noise', 'done'])
+        self.assertEqual([call.args[1] for call in publish.call_args_list], ['done'])
 
     def cancel_and_wait(self, task, timeout=20):
         """cancel() は UI を止めないので、停止と後始末の完了を待ってから検証する。"""

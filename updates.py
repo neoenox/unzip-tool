@@ -18,6 +18,10 @@ DOWNLOAD_PREFIX = f'{RELEASE_URL}/download/'
 MAX_UPDATE_BYTES = 150 * 1024 * 1024
 
 
+INVALID_VERIFICATION_MESSAGE = '更新ファイルの検証情報を確認できませんでした。'
+INVALID_SIZE_MESSAGE = '更新ファイルのサイズを確認できませんでした。'
+
+
 def _is_certificate_error(error: Exception) -> bool:
     """urlopen raises SSLCertVerificationError directly or wrapped in URLError."""
     if isinstance(error, ssl.SSLCertVerificationError):
@@ -98,13 +102,13 @@ def _installer_asset(release: dict, tag: str) -> dict | None:
         raise ValueError('更新ファイルの取得元が公式リリースと一致しません。')
     size = asset.get('size')
     if not isinstance(size, int) or not 0 < size <= MAX_UPDATE_BYTES:
-        raise ValueError('更新ファイルのサイズを確認できませんでした。')
+        raise ValueError(INVALID_SIZE_MESSAGE)
     digest = asset.get('digest')
     if not isinstance(digest, str) or not digest.startswith('sha256:'):
-        raise ValueError('更新ファイルの検証情報を確認できませんでした。')
+        raise ValueError(INVALID_VERIFICATION_MESSAGE)
     checksum = digest.split(':', 1)[1].lower()
     if not re.fullmatch(r'[0-9a-f]{64}', checksum):
-        raise ValueError('更新ファイルの検証情報を確認できませんでした。')
+        raise ValueError(INVALID_VERIFICATION_MESSAGE)
     return {'version': version, 'name': name, 'url': url, 'size': size, 'sha256': checksum}
 
 
@@ -133,10 +137,10 @@ def download_update(package: dict, on_progress=None) -> str:
         raise ValueError('公式リリース以外からはダウンロードしません。')
     checksum = package.get('sha256', '')
     if not isinstance(checksum, str) or not re.fullmatch(r'[0-9a-f]{64}', checksum):
-        raise ValueError('更新ファイルの検証情報を確認できませんでした。')
+        raise ValueError(INVALID_VERIFICATION_MESSAGE)
     size = package.get('size')
     if not isinstance(size, int) or not 0 < size <= MAX_UPDATE_BYTES:
-        raise ValueError('更新ファイルのサイズを確認できませんでした。')
+        raise ValueError(INVALID_SIZE_MESSAGE)
 
     directory = Path(tempfile.mkdtemp(prefix='kantan-update-'))
     target = directory / Path(url).name
