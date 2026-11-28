@@ -65,13 +65,16 @@ class VersionConsistencyTests(unittest.TestCase):
             self.assertTrue(values, f"README から{label}を1つも見つけられなかった")
             self.assertEqual(set(values), {VERSION}, f"README の{label}が version.py と一致しない")
 
-    def test_installer_scripts_read_the_version_from_version_py(self):
+    def test_installer_scripts_read_the_version_from_one_helper(self):
+        helper = (ROOT / 'scripts' / 'get-version.ps1').read_text(encoding='utf-8')
+        self.assertIn('version.py', helper)
+        self.assertNotRegex(helper, r"(?<![\d.])\d+\.\d+\.\d+(?![\d.])")
         for name in ("build-installer.ps1", "test-installer.ps1", "verify-release.ps1"):
             text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
             with self.subTest(script=name):
                 self.assertNotIn(VERSION, text, f"{name} は現行版を直書きしない")
                 self.assertNotRegex(text, r"(?<![\d.])\d+\.\d+\.\d+(?![\d.])", f"{name} は版数を直書きしない")
-                self.assertIn("version.py", text)
+                self.assertIn('get-version.ps1', text)
 
     def test_inno_setup_requires_the_version_defines(self):
         self.assertNotIn(VERSION, self.iss, "KantanKaiko.iss は版数を直書きしない")

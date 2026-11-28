@@ -66,7 +66,7 @@ No import cycles today. Two *semantic* cycles to keep under control: `ui ↔ App
 | Format suffixes & kind | `unzipper.FORMATS` (+ derived `SUPPORTED_SUFFIXES`, `DIALOG_FILTERS`) | `ui.HELP_SECTIONS`, `unzipper.default_dest_for` stripping, installer ISS | Round 1 consolidated Python side; installer literal lines are constrained by text tests |
 | User-facing domain messages | `unzipper.py` named constants (`DISK_FULL_MESSAGE`, `PASSWORD_*`, `LINK_UNSUPPORTED_MESSAGE`, `DANGEROUS_PATH_MESSAGE`) | RAR-only link wording (single use, semantically distinct) | Round 2 consolidated all repeated literals; wording unchanged |
 | Terminal worker events | `jobs.TERMINAL_EVENTS` + `jobs.UNEXPECTED_EXIT_MESSAGE` | update-specific `('done','error')` gate in `app._finish_check` (different protocol) | Round 3 consolidated all five terminal consumers; behaviour unchanged |
-| Version | `version.py` | 3 PowerShell regex parsers, README examples | Later batch; README literals are test-pinned |
+| Version | `version.py` + `scripts/get-version.ps1` (only PowerShell parser) | README examples (text-test pinned), Python imports | Round 4 removed three duplicate parsers; no hardcoded version in scripts |
 | Geometry limits | `settings.MIN_WIDTH/MIN_HEIGHT` | `app.minsize(700,680)`, PowerShell QA regex | Deferred: aligning changes visible behavior |
 | Status colours | `app.STATE_BADGE` (job state) vs `ui.UPDATE_CHIP_STYLES` (update phase) | — | Intentional: different concepts, do not merge |
 | Format badge vs filter labels | `app.FORMAT_BADGE` vs `unzipper.DIALOG_FILTERS` | — | Intentional: badge is short UI label, filter is dialog group |
