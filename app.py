@@ -12,7 +12,7 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 from dnd import MAX_FILES, disable_drop, enable_drop, is_drag_over, take_dropped_files, take_truncated_files
-from jobs import BackgroundTask, ThreadTask
+from jobs import BackgroundTask, TERMINAL_EVENTS, ThreadTask
 from settings import Settings, placeable_geometry, valid_geometry, virtual_screen
 from ui import UPDATE_DEFAULT_TEXT, Tooltip, build_help_window, build_widgets, paint_drop_area, set_drop_compact, set_update_chip
 from unzipper import (DIALOG_FILTERS, DISK_FULL_MESSAGE, Entry, available_dest, default_dest_for,
@@ -1221,7 +1221,7 @@ class App(tk.Tk):
         if self._listing:
             task, job, revision = self._listing
             for kind, payload in task.poll():
-                if kind not in ("done", "error", "password"):
+                if kind not in TERMINAL_EVENTS:
                     continue
                 self._listing = None
                 if revision != job.revision or job.state == "done":

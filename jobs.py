@@ -16,6 +16,9 @@ from unzipper import (
     clean_staging, error_message, list_contents, publish_staging,
 )
 
+TERMINAL_EVENTS = frozenset({'done', 'error', 'password'})
+UNEXPECTED_EXIT_MESSAGE = '処理が予期せず終了しました。もう一度お試しください。'
+
 
 def _make_staging(dest) -> Path:
     """保存先と同じ場所に、公開前の書き込み先を作る。"""
@@ -89,7 +92,7 @@ class ThreadTask(_OwnedTask):
                 kind, payload = self._events.get_nowait()
             except queue.Empty:
                 break
-            if kind in ('done', 'error', 'password'):
+            if kind in TERMINAL_EVENTS:
                 events.append(_publish(self, kind, payload))
                 self.finished = True
                 self._clean_staging()
@@ -184,7 +187,7 @@ class BackgroundTask(_OwnedTask):
             self.connection.close()
             self._clean_staging()
             self._stopped.set()
-            return [('error', '処理が予期せず終了しました。もう一度お試しください。')]
+            return [('error', UNEXPECTED_EXIT_MESSAGE)]
         # Bound work per Tk tick so huge archives cannot starve the GUI.
         for _ in range(100):
             if not self.connection.poll():
@@ -192,8 +195,8 @@ class BackgroundTask(_OwnedTask):
             try:
                 kind, payload = self.connection.recv()
             except (EOFError, OSError):
-                kind, payload = 'error', '処理が予期せず終了しました。もう一度お試しください。'
-            if kind in ('done', 'error', 'password'):
+                kind, payload = 'error', UNEXPECTED_EXIT_MESSAGE
+            if kind in TERMINAL_EVENTS:
                 self.process.join(1)
                 events.append(_publish(self, kind, payload))
                 self.finished = True

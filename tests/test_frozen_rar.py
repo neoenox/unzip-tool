@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from jobs import BackgroundTask
+from jobs import BackgroundTask, TERMINAL_EVENTS
 
 
 def finish(task):
@@ -17,7 +17,7 @@ def finish(task):
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             for kind, payload in task.poll():
-                if kind in ('done', 'error', 'password'):
+                if kind in TERMINAL_EVENTS:
                     return kind, payload
             time.sleep(.02)
         raise AssertionError('Frozen worker timed out')

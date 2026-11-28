@@ -7,7 +7,7 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 |---|---|---|---|---|
 | A1 | `unzipper.FORMATS` registry; derive suffixes, detection, dest stripping, dialog filters, help line | One place to add a format | Low: pure derivation, existing callback contracts unchanged | done — round 1; dialog consumer covered by a behavioral test |
 | A2 | Name the repeated domain messages in `unzipper.py` | One authority per message concept | Low: strings unchanged at every site | done — round 2; 15 sites migrated, canonical message set asserted in tests |
-| A3 | Share terminal-event set between `jobs.py` and `app.py` | One worker protocol definition | Low: same set, no protocol change | candidate — verify no consumer treats a different subset as terminal |
+| A3 | Share terminal-event set between `jobs.py` and `app.py` | One worker protocol definition | Low: same set, no protocol change | done — round 3; all five consumers migrated, unknown-event guard added |
 | A4 | Replace 3 PowerShell version regex parsers with one helper | `version.py` is read, not re-parsed | Medium: release-QA host assumptions | candidate — see D5; keep version-consistency test green |
 | A5 | Delete test-only `_check_names_safe` adapter | Tests call `_validate_entries` directly | Low: no production caller | candidate — only worthwhile if it removes real indirection, not just lines |
 | D1 | Unified cancellation contract for both worker types | Shared worker lifecycle | High: behaviour change | deferred — product decision required |
@@ -19,4 +19,4 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 
 ## Done
 
-round 1 (format registry), round 2 (domain messages); see `progress.md`
+round 1 (format registry), round 2 (domain messages), round 3 (worker protocol); see `progress.md`
