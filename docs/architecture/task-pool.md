@@ -14,7 +14,7 @@ Status: `ready` = safe now; `candidate` = verified but needs a round; `deferred`
 | A7 | Name byte-identical update validation messages | Two messages defined once instead of five literal sites | Low: exact string substitution | done — round 7; distinct failure wording intentionally left alone |
 | D1 | Unified cancellation contract for both worker types | Shared worker lifecycle | High: behaviour change | deferred — product decision required |
 | D2 | One geometry validator for Python + PowerShell | One minimum-window rule | High: visible resize behaviour | deferred — product decision required |
-| D3 | Split `App` domain state from widget state | Stable job-state API | High: ~1,350-line migration | deferred — dedicated round after A1–A3 |
+| D3 | Split `App` domain state from widget state | Stable job-state API | High: ~1,350-line migration | deferred — dedicated round after A1–A7 |
 | D4 | Encapsulate DnD hwnd state | Single drop-state owner | Medium: tests poke privates | deferred — test migration required |
 | D5 | Distinct `updates.py` failure messages | No further entropy reduction: wording expresses different failures | Medium: pinned substrings | deferred — product/UX decision only; byte-identical pair named in round 7 (A7) |
 | D6 | Consolidate repeatable test scaffolding (`pump`, fake IDataObject) | One harness | Low value, many test edits | deferred — do only if a new test needs it |
