@@ -330,11 +330,6 @@ def _validate_entries(base: Path, entries: list[Entry]) -> None:
             parent = parent.parent
 
 
-def _check_names_safe(base: Path, names: list[str]) -> None:
-    for name in names:
-        _safe_join(base, name)
-
-
 ProgressCb = Callable[[int, int], None]
 
 

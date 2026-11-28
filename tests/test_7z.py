@@ -10,7 +10,8 @@ import py7zr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from unzipper import _check_names_safe, _extract_into, PasswordRequiredError, default_dest_for, detect_kind, extract_archive, is_supported, list_contents  # noqa: E402
+from unzipper import (_safe_join, _extract_into, PasswordRequiredError, default_dest_for,  # noqa: E402
+                      detect_kind, extract_archive, is_supported, list_contents)
 
 
 def make_7z(base: Path, name: str = "t.7z", password: str | None = None) -> Path:
@@ -77,12 +78,13 @@ def test_7z_evil_names_rejected() -> None:
     # ..系・ドライブ絶対は拒否 (py7zr本体もBad7zFileで拒否する)
     for evil in ("../evil.txt", "..\\evil.txt", "sub/../../evil.txt", "C:/win.txt", "/abs.txt"):
         try:
-            _check_names_safe(dest, [evil])
+            _safe_join(dest, evil)
         except ValueError:
             pass
         else:
             raise AssertionError(f"not rejected: {evil}")
-    _check_names_safe(dest, ["ok.txt", "sub/ok2.txt"])
+    for name in ("ok.txt", "sub/ok2.txt"):
+        _safe_join(dest, name)
 
 
 def main() -> int:
